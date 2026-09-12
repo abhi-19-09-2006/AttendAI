@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups
+from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups, webhooks, test_calls
 
 # Setup logging
 logger = setup_logging()
@@ -56,6 +56,8 @@ app.include_router(attendance.router, prefix="/api/attendance", tags=["Attendanc
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
 app.include_router(absence_reports.router, prefix="/api/absence-reports", tags=["Absence Reports"])
 app.include_router(followups.router, prefix="/api/followups", tags=["Follow-ups"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
+app.include_router(test_calls.router, prefix="/api/test", tags=["Testing"])
 
 
 @app.get("/")

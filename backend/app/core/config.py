@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     VAPI_API_KEY: str = ""
     VAPI_WEBHOOK_SECRET: str = ""
     VAPI_PHONE_NUMBER_ID: str = ""
+    VAPI_ASSISTANT_ID: str = ""  # Optional: Pre-created assistant ID
     VAPI_BASE_URL: str = "https://api.vapi.ai"
 
     # LLM Provider
