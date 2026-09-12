@@ -264,20 +264,31 @@ class CallService:
                 absence_date=attendance.date
             )
 
+            # Map category string to AbsenceCategory enum
+            category_mapping = {
+                "medical": AbsenceCategory.MEDICAL,
+                "family": AbsenceCategory.FAMILY,
+                "personal": AbsenceCategory.PERSONAL,
+                "other": AbsenceCategory.OTHER,
+                "unknown": AbsenceCategory.UNKNOWN,
+                "transportation": AbsenceCategory.OTHER,  # map transportation to other for DB enum
+            }
+            category_enum = category_mapping.get(str(extraction.category.value if hasattr(extraction.category, 'value') else extraction.category), AbsenceCategory.UNKNOWN)
+
             # Create absence report
             report = AbsenceReport(
                 call_id=call.id,
                 student_id=call.student_id,
                 attendance_id=call.attendance_id,
-                reason=extraction.get("reason"),
-                category=AbsenceCategory(extraction.get("category", "unknown")),
-                duration=extraction.get("duration"),
-                expected_return_date=extraction.get("expected_return_date"),
-                parent_confirmed=extraction.get("parent_confirmed", False),
-                follow_up_required=extraction.get("follow_up_required", False),
-                confidence_score=extraction.get("confidence_score", 0.0),
+                reason=extraction.reason,
+                category=category_enum,
+                duration=extraction.duration,
+                expected_return_date=extraction.expected_return_date,
+                parent_confirmed=extraction.parent_confirmed,
+                follow_up_required=extraction.follow_up_required,
+                confidence_score=extraction.confidence_score,
                 transcript=transcript,
-                raw_extraction=extraction
+                raw_extraction=extraction.model_dump(mode="json")
             )
 
             self.db.add(report)
