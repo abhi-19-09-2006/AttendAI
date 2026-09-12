@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.api import health
+from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups
 
 # Setup logging
 logger = setup_logging()
@@ -48,6 +48,14 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["Health"])
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(students.router, prefix="/api/students", tags=["Students"])
+app.include_router(parents.router, prefix="/api/parents", tags=["Parents"])
+app.include_router(attendance.router, prefix="/api/attendance", tags=["Attendance"])
+app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
+app.include_router(absence_reports.router, prefix="/api/absence-reports", tags=["Absence Reports"])
+app.include_router(followups.router, prefix="/api/followups", tags=["Follow-ups"])
 
 
 @app.get("/")
