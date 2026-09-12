@@ -8,6 +8,7 @@ from app.services.extraction_provider import ExtractionProvider, ExtractionError
 from app.services.openai_extractor import OpenAIExtractor
 from app.services.anthropic_extractor import AnthropicExtractor
 from app.services.extraction_factory import get_extraction_provider
+from app.services.prompt_manager import ExtractionPromptManager, PromptVersion
 from app.services.ai_service import AIService
 from app.services.call_service import CallService
 
@@ -26,5 +27,7 @@ __all__ = [
     "OpenAIExtractor",
     "AnthropicExtractor",
     "get_extraction_provider",
+    "ExtractionPromptManager",
+    "PromptVersion",
     "AIService",
 ]

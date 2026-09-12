@@ -1,9 +1,9 @@
 """
-Unit tests for AI transcript extraction service and schema validation.
+Unit tests for AI transcript extraction service, prompt management, and schema validation.
 """
 import pytest
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.schemas.extraction import (
     ExtractedAbsenceInfo,
@@ -11,7 +11,9 @@ from app.schemas.extraction import (
     ExtractionConfidence
 )
 from app.services.extraction_provider import ExtractionError
+from app.services.prompt_manager import ExtractionPromptManager, PromptVersion
 from app.services.openai_extractor import OpenAIExtractor
+from app.services.anthropic_extractor import AnthropicExtractor
 from app.services.ai_service import AIService
 
 
@@ -103,7 +105,7 @@ class TestExtractedAbsenceInfoSchema:
             reason="High fever and flu symptoms",
             category=AbsenceCategoryEnum.MEDICAL,
             duration="2-3 days",
-            expected_return_date=date(2026, 9, 15),
+            expected_return="2026-09-15",
             parent_confirmed=True,
             follow_up_required=False,
             confidence_score=0.95,
@@ -113,9 +115,35 @@ class TestExtractedAbsenceInfoSchema:
         )
         assert info.category == AbsenceCategoryEnum.MEDICAL
         assert info.confidence_score == 0.95
+        assert info.confidence == 0.95
         assert info.confidence_level == ExtractionConfidence.HIGH
         assert info.parent_confirmed is True
         assert info.follow_up_required is False
+        assert info.expected_return == "2026-09-15"
+        assert info.expected_return_date == date(2026, 9, 15)
+
+    def test_canonical_dictionary_output(self):
+        """Test the canonical expected dictionary representation."""
+        info = ExtractedAbsenceInfo(
+            reason="Severe migraine",
+            category=AbsenceCategoryEnum.MEDICAL,
+            duration="1 day",
+            expected_return="tomorrow",
+            parent_confirmed=True,
+            follow_up_required=False,
+            confidence_score=0.92,
+            call_outcome="completed"
+        )
+        canonical = info.to_canonical_dict()
+        assert canonical == {
+            "reason": "Severe migraine",
+            "category": "medical",
+            "duration": "1 day",
+            "expected_return": "tomorrow",
+            "parent_confirmed": True,
+            "follow_up_required": False,
+            "confidence": 0.92
+        }
 
     def test_low_confidence_auto_flags_followup(self):
         """Test that low confidence (<0.85) automatically sets follow_up_required to True."""
@@ -153,6 +181,7 @@ class TestExtractedAbsenceInfoSchema:
         )
         assert info.reason is None
         assert info.duration is None
+        assert info.expected_return is None
         assert info.expected_return_date is None
         assert info.notes is None
         assert info.parent_statement is None
@@ -191,6 +220,40 @@ class TestExtractedAbsenceInfoSchema:
 
 
 # ============================================================================
+# Prompt Management Tests
+# ============================================================================
+
+class TestPromptManager:
+    """Test prompt builder, rules, and versioning."""
+
+    def test_system_prompt_contains_guardrails(self):
+        prompt = ExtractionPromptManager.get_system_prompt()
+        assert "NEVER INVENT INFORMATION" in prompt
+        assert "DO NOT DIAGNOSE MEDICAL CONDITIONS" in prompt
+        assert "PRESERVE VERBATIM STATEMENTS" in prompt
+
+    def test_build_extraction_prompt_with_context(self):
+        built = ExtractionPromptManager.build_extraction_prompt(
+            transcript="SAMPLE TRANSCRIPT",
+            student_name="Alex Rivera",
+            absence_date=date(2026, 9, 12),
+            context={"grade_level": "Sophomore", "student_id": "ST123"}
+        )
+        assert "Alex Rivera" in built
+        assert "2026-09-12" in built
+        assert "Sophomore" in built
+        assert "SAMPLE TRANSCRIPT" in built
+
+    def test_openai_and_anthropic_schemas_available(self):
+        fn_schema = ExtractionPromptManager.get_openai_function_schema()
+        assert fn_schema["name"] == "record_absence_information"
+        assert "category" in fn_schema["parameters"]["properties"]
+
+        anthropic_schema = ExtractionPromptManager.get_anthropic_json_schema()
+        assert "JSON object" in anthropic_schema
+
+
+# ============================================================================
 # Extraction Provider Tests with Mock LLM Responses
 # ============================================================================
 
@@ -204,6 +267,7 @@ class TestExtractionCases:
             "reason": "High fever, around 102",
             "category": "medical",
             "duration": "2 days",
+            "expected_return": "Monday",
             "expected_return_date": "2026-09-15",
             "parent_confirmed": True,
             "follow_up_required": False,
@@ -215,13 +279,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_FEVER,
@@ -243,6 +307,7 @@ class TestExtractionCases:
             "reason": "Out of town attending brother's wedding",
             "category": "family",
             "duration": "Weekend / through Sunday",
+            "expected_return": "Monday morning",
             "expected_return_date": "2026-09-15",
             "parent_confirmed": True,
             "follow_up_required": False,
@@ -254,13 +319,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_FAMILY_EVENT,
@@ -280,6 +345,7 @@ class TestExtractionCases:
             "reason": "Car broke down on the highway, tow truck took three hours",
             "category": "transportation",
             "duration": "1 day",
+            "expected_return": "tomorrow morning",
             "expected_return_date": "2026-09-13",
             "parent_confirmed": True,
             "follow_up_required": False,
@@ -291,13 +357,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_TRANSPORTATION,
@@ -316,6 +382,7 @@ class TestExtractionCases:
             "reason": None,
             "category": "unknown",
             "duration": None,
+            "expected_return": None,
             "expected_return_date": None,
             "parent_confirmed": True,
             "follow_up_required": True,
@@ -327,13 +394,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_PARENT_REFUSES,
@@ -354,6 +421,7 @@ class TestExtractionCases:
             "reason": "Things are hectic, stuff happened",
             "category": "unknown",
             "duration": None,
+            "expected_return": "maybe tomorrow or next week",
             "expected_return_date": None,
             "parent_confirmed": True,
             "follow_up_required": True,
@@ -365,13 +433,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_UNCLEAR_RESPONSE,
@@ -390,6 +458,7 @@ class TestExtractionCases:
             "reason": None,
             "category": "unknown",
             "duration": None,
+            "expected_return": None,
             "expected_return_date": None,
             "parent_confirmed": False,
             "follow_up_required": True,
@@ -401,13 +470,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_NO_PARENT_VOICEMAIL,
@@ -428,6 +497,7 @@ class TestExtractionCases:
             "reason": "Migraine headache and car wouldn't start",
             "category": "medical",
             "duration": "1 day",
+            "expected_return": "tomorrow",
             "expected_return_date": "2026-09-13",
             "parent_confirmed": True,
             "follow_up_required": False,
@@ -439,13 +509,13 @@ class TestExtractionCases:
 
         extractor = OpenAIExtractor(api_key="test-key")
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
-            mock_message = AsyncMock()
-            mock_func = AsyncMock()
+            mock_message = MagicMock()
+            mock_func = MagicMock()
             mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
             mock_message.function_call = mock_func
-            mock_choice = AsyncMock()
+            mock_choice = MagicMock()
             mock_choice.message = mock_message
-            mock_create.return_value = AsyncMock(choices=[mock_choice])
+            mock_create.return_value = MagicMock(choices=[mock_choice])
 
             result = await extractor.extract_absence_info(
                 transcript=TRANSCRIPT_MULTIPLE_REASONS,
@@ -455,7 +525,42 @@ class TestExtractionCases:
 
             assert result.parent_confirmed is True
             assert "migraine" in result.reason.lower()
-            assert result.expected_return_date is not None
+            assert result.expected_return is not None
+
+    @pytest.mark.asyncio
+    async def test_anthropic_extractor_with_markdown_fence(self):
+        """Test Anthropic Claude extractor correctly parses markdown fenced JSON."""
+        mock_content = """```json
+{
+    "reason": "Severe strep throat",
+    "category": "medical",
+    "duration": "3 days",
+    "expected_return": "Thursday",
+    "expected_return_date": "2026-09-17",
+    "parent_confirmed": true,
+    "follow_up_required": false,
+    "confidence_score": 0.94,
+    "notes": "Parent took student to urgent care",
+    "parent_statement": "He was diagnosed with strep throat this morning",
+    "call_outcome": "completed"
+}
+```"""
+        extractor = AnthropicExtractor(api_key="test-key")
+        with patch.object(extractor.client.messages, 'create', new_callable=AsyncMock) as mock_create:
+            mock_block = MagicMock()
+            mock_block.text = mock_content
+            mock_create.return_value = MagicMock(content=[mock_block])
+
+            result = await extractor.extract_absence_info(
+                transcript="ASSISTANT: Hello... PARENT: He has strep throat",
+                student_name="Jordan Bell",
+                absence_date=date(2026, 9, 12)
+            )
+
+            assert result.category == AbsenceCategoryEnum.MEDICAL
+            assert result.parent_confirmed is True
+            assert result.confidence_score == 0.94
+            assert result.follow_up_required is False
 
     @pytest.mark.asyncio
     async def test_ai_service_fallback_on_error(self):

@@ -1,9 +1,9 @@
 """
 Pydantic schemas for absence information extraction.
 """
-from typing import Optional
+from typing import Optional, Any, Dict, Union
 from datetime import date
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
 
@@ -48,9 +48,14 @@ class ExtractedAbsenceInfo(BaseModel):
         description="Expected duration as stated (e.g., '1 day', '2-3 days', 'a week'). None if not mentioned."
     )
 
+    expected_return: Optional[str] = Field(
+        None,
+        description="Expected return timeframe or date string as stated by parent (e.g., 'Monday', 'tomorrow', '2026-09-15'). None if unknown."
+    )
+
     expected_return_date: Optional[date] = Field(
         None,
-        description="Expected return date if explicitly stated. None if unknown."
+        description="Expected return date if explicitly determinable (YYYY-MM-DD). None if unknown."
     )
 
     parent_confirmed: bool = Field(
@@ -90,6 +95,35 @@ class ExtractedAbsenceInfo(BaseModel):
         description="Call outcome: completed, no_answer, voicemail, busy, wrong_number"
     )
 
+    @property
+    def confidence(self) -> float:
+        """Alias for confidence_score."""
+        return self.confidence_score
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_expected_return_and_confidence(cls, data: Any) -> Any:
+        """Handle aliases and mutual populating of fields."""
+        if isinstance(data, dict):
+            # If 'confidence' passed instead of 'confidence_score'
+            if "confidence" in data and "confidence_score" not in data:
+                data["confidence_score"] = data["confidence"]
+
+            # If expected_return_date is provided but expected_return is not, populate expected_return
+            if data.get("expected_return_date") and not data.get("expected_return"):
+                ret_date = data["expected_return_date"]
+                data["expected_return"] = ret_date.isoformat() if hasattr(ret_date, "isoformat") else str(ret_date)
+            elif data.get("expected_return") and not data.get("expected_return_date"):
+                # Try to parse if it's a date string (YYYY-MM-DD)
+                ret_str = str(data["expected_return"]).strip()
+                if len(ret_str) == 10 and ret_str.count("-") == 2:
+                    try:
+                        data["expected_return_date"] = date.fromisoformat(ret_str)
+                    except ValueError:
+                        pass
+
+        return data
+
     @field_validator("confidence_level", mode="before")
     @classmethod
     def derive_confidence_level(cls, v, info):
@@ -108,18 +142,41 @@ class ExtractedAbsenceInfo(BaseModel):
     @field_validator("follow_up_required", mode="before")
     @classmethod
     def auto_flag_low_confidence(cls, v, info):
-        """Automatically require follow-up for low confidence."""
+        """Automatically require follow-up for low confidence or refusals."""
         score = info.data.get("confidence_score", 0.0)
 
-        # Always require follow-up if confidence < 0.85 or parent refused
+        # Always require follow-up if confidence < 0.85
         if score < 0.85:
             return True
 
         notes = info.data.get("notes", "")
-        if notes and any(word in notes.lower() for word in ["refused", "declined", "won't say", "callback"]):
+        if notes and any(word in str(notes).lower() for word in ["refused", "declined", "won't say", "private matter", "callback"]):
             return True
 
         return v
+
+    def to_canonical_dict(self) -> Dict[str, Any]:
+        """
+        Return the exact expected canonical schema format:
+        {
+            reason,
+            category,
+            duration,
+            expected_return,
+            parent_confirmed,
+            follow_up_required,
+            confidence
+        }
+        """
+        return {
+            "reason": self.reason,
+            "category": self.category.value if hasattr(self.category, "value") else str(self.category),
+            "duration": self.duration,
+            "expected_return": self.expected_return or (self.expected_return_date.isoformat() if self.expected_return_date else None),
+            "parent_confirmed": self.parent_confirmed,
+            "follow_up_required": self.follow_up_required,
+            "confidence": self.confidence_score
+        }
 
     class Config:
         json_schema_extra = {
@@ -127,6 +184,7 @@ class ExtractedAbsenceInfo(BaseModel):
                 "reason": "Not feeling well, has a fever",
                 "category": "medical",
                 "duration": "2-3 days",
+                "expected_return": "2026-09-15",
                 "expected_return_date": "2026-09-15",
                 "parent_confirmed": True,
                 "follow_up_required": False,
