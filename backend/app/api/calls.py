@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.auth import require_faculty
 from app.schemas import CallResponse, CallCreate, CallUpdate, CampaignResponse, CampaignCreate, CampaignUpdate
 from app.models import User, Call, CallCampaign, Student, Parent, Attendance, CallStatus
+from app.services.call_service import CallService
 
 router = APIRouter()
 
@@ -235,6 +236,63 @@ async def update_call(
         setattr(call, field, value)
 
     await db.commit()
+    await db.refresh(call)
+
+    return call
+
+
+@router.post("/{call_id}/retry", response_model=CallResponse)
+async def retry_call(
+    call_id: str,
+    current_user: User = Depends(require_faculty),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retry a failed/unanswered call.
+
+    Re-initiates the call through the voice provider and increments the retry counter.
+    Returns 400 if the call is not in a retryable state or has exhausted its retries.
+    """
+    call = await db.get(Call, call_id)
+
+    if not call:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Call not found"
+        )
+
+    retryable_statuses = {
+        CallStatus.NO_ANSWER,
+        CallStatus.BUSY,
+        CallStatus.FAILED,
+        CallStatus.INVALID_NUMBER,
+    }
+    if call.status not in retryable_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot retry call in '{call.status.value}' state"
+        )
+
+    if call.retry_count >= call.max_retries:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call has already exhausted its maximum retries"
+        )
+
+    # Reset status and bump the retry counter so initiate_call records the next attempt.
+    call.retry_count += 1
+    call.status = CallStatus.PENDING
+    await db.commit()
+
+    call_service = CallService(db)
+    success = await call_service.initiate_call(call.id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate retry call"
+        )
+
     await db.refresh(call)
 
     return call

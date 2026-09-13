@@ -2,10 +2,15 @@
 
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { DashboardLayout } from '@/components/DashboardLayout'
-import { useCalls } from '@/hooks/useApi'
+import { useCalls, useRetryCall } from '@/hooks/useApi'
+import type { CallResponse } from '@/types'
 import { CallStatusBadge } from '@/components/ui/Badge'
 import { formatDateTime, formatDuration } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
+import Link from 'next/link'
+import { useState } from 'react'
+
+const RETRYABLE_STATUSES = new Set(['failed', 'no_answer', 'busy', 'invalid_number'])
 
 export default function CallsPage() {
   const { data: calls, isLoading } = useCalls({ limit: 50 })
@@ -39,31 +44,7 @@ export default function CallsPage() {
                 ) : !calls?.length ? (
                   <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No calls found.</td></tr>
                 ) : (
-                  calls.map((call) => (
-                    <tr key={call.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatDateTime(call.created_at)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                        {call.phone_number_called}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <CallStatusBadge status={call.status} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDuration(call.duration_seconds)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {call.retry_count} / {call.max_retries}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {/* Action buttons would connect to API to retry logic or view call specifics */}
-                        {call.status === 'failed' || call.status === 'no_answer' || call.status === 'busy' ? (
-                           <Button variant="outline" size="sm">Retry</Button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))
+                  calls.map((call) => <CallRow key={call.id} call={call} />)
                 )}
               </tbody>
             </table>
@@ -71,5 +52,68 @@ export default function CallsPage() {
         </div>
       </DashboardLayout>
     </ProtectedRoute>
+  )
+}
+
+function CallRow({ call }: { call: CallResponse }) {
+  const { mutateAsync: retryCall, isPending: isRetrying } = useRetryCall(call.id)
+  const [error, setError] = useState('')
+
+  const canRetry =
+    RETRYABLE_STATUSES.has(call.status) && call.retry_count < call.max_retries
+
+  const handleRetry = async () => {
+    setError('')
+    try {
+      await retryCall()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Retry failed')
+    }
+  }
+
+  return (
+    <tr key={call.id} className="hover:bg-gray-50">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {formatDateTime(call.created_at)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
+        {call.phone_number_called}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <CallStatusBadge status={call.status} />
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {formatDuration(call.duration_seconds)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {call.retry_count} / {call.max_retries}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+        <div className="flex items-center justify-end gap-2">
+          {canRetry && (
+            <>
+              {error && (
+                <span className="text-xs text-red-600 max-w-[140px] truncate" title={error}>
+                  {error}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRetrying}
+                onClick={handleRetry}
+              >
+                {isRetrying ? 'Retrying…' : `Retry (${call.retry_count}/${call.max_retries})`}
+              </Button>
+            </>
+          )}
+          <Link href={`/calls/${call.id}`}>
+            <Button variant="ghost" size="sm">
+              Details
+            </Button>
+          </Link>
+        </div>
+      </td>
+    </tr>
   )
 }

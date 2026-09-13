@@ -133,16 +133,18 @@ export default function StudentDetailsPage({ params }: { params: { id: string } 
                 ) : (
                   calls.map((call) => (
                     <li key={call.id} className="px-5 py-3 hover:bg-gray-50">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-sm font-medium text-gray-900">
-                          Called: <span className="font-mono text-xs">{call.phone_number_called}</span>
+                      <Link href={`/calls/${call.id}`} className="block">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            Called: <span className="font-mono text-xs">{call.phone_number_called}</span>
+                          </div>
+                          <CallStatusBadge status={call.status} />
                         </div>
-                        <CallStatusBadge status={call.status} />
-                      </div>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>{formatDateTime(call.created_at)}</span>
-                        {call.duration_seconds && <span>{call.duration_seconds}s</span>}
-                      </div>
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>{formatDateTime(call.created_at)}</span>
+                          {call.duration_seconds && <span>{call.duration_seconds}s</span>}
+                        </div>
+                      </Link>
                     </li>
                   ))
                 )}

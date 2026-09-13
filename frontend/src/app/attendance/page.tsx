@@ -2,14 +2,19 @@
 
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { DashboardLayout } from '@/components/DashboardLayout'
-import { useAttendance } from '@/hooks/useApi'
+import { useAttendance, useStudents } from '@/hooks/useApi'
 import { AttendanceBadge } from '@/components/ui/Badge'
 import { formatDate } from '@/lib/utils'
+import Link from 'next/link'
 import { useState } from 'react'
 
 export default function AttendancePage() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const { data: records, isLoading } = useAttendance({ date_from: date, date_to: date, limit: 100 })
+  const { data: students } = useStudents({ limit: 100 })
+  const studentNames = new Map(
+    (students ?? []).map((s) => [s.id, `${s.last_name}, ${s.first_name}`]),
+  )
 
   return (
     <ProtectedRoute>
@@ -34,7 +39,7 @@ export default function AttendancePage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                  <th className="px-6 py-3">Student Name / ID (mocked reference)</th>
+                  <th className="px-6 py-3">Student</th>
                   <th className="px-6 py-3">Period</th>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Recorded At</th>
@@ -48,8 +53,13 @@ export default function AttendancePage() {
                 ) : (
                   records.map((record) => (
                     <tr key={record.id} className="hover:bg-gray-50">
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                         {record.student_id.substring(0, 8)}...
+                       <td className="px-6 py-4 whitespace-nowrap text-sm">
+                         <Link
+                           href={`/students/${record.student_id}`}
+                           className="font-medium text-gray-900 hover:text-primary-600"
+                         >
+                           {studentNames.get(record.student_id) ?? record.student_id.substring(0, 8) + '…'}
+                         </Link>
                        </td>
                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                          {record.period || 'Full Day'}

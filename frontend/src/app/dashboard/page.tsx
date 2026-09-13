@@ -34,7 +34,7 @@ export default function DashboardPage() {
       <DashboardLayout>
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Overview of today's attendance communication.</p>
+          <p className="text-gray-500 mt-1">Overview of today&apos;s attendance communication.</p>
         </div>
 
         {/* Stats Grid */}
@@ -51,7 +51,7 @@ export default function DashboardPage() {
           {/* Today's Absentees */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-lg font-medium text-gray-900">Today's Absentees</h2>
+              <h2 className="text-lg font-medium text-gray-900">Today&apos;s Absentees</h2>
               <Link href="/attendance" className="text-sm font-medium text-primary-600 hover:text-primary-700">
                 View all &rarr;
               </Link>

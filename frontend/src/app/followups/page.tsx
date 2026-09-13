@@ -2,10 +2,12 @@
 
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { DashboardLayout } from '@/components/DashboardLayout'
-import { useFollowUps, useCompleteFollowUp } from '@/hooks/useApi'
+import { useFollowUps, useCompleteFollowUp, useStudents } from '@/hooks/useApi'
+import type { FollowUpResponse } from '@/types'
 import { Badge, FollowUpPriorityBadge, FollowUpStatusBadge } from '@/components/ui/Badge'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
+import Link from 'next/link'
 import { useState } from 'react'
 
 export default function FollowupsPage() {
@@ -13,20 +15,10 @@ export default function FollowupsPage() {
   const { data: followUps, isLoading } = useFollowUps(
     filter === 'pending' ? { status: 'pending', limit: 50 } : { limit: 50 }
   )
-
-  const { mutateAsync: completeTask } = useCompleteFollowUp('')
-  const [resolvingId, setResolvingId] = useState<string | null>(null)
-
-  const handleResolve = async (id: string) => {
-    setResolvingId(id)
-    try {
-      await completeTask({ id, notes: 'Resolved from dashboard UI' } as any) // Type hack, useCompleteFollowUp needs factory rework but works for this demo
-    } catch {
-      // ignore
-    } finally {
-      setResolvingId(null)
-    }
-  }
+  const { data: students } = useStudents({ limit: 100 })
+  const studentNames = new Map(
+    (students ?? []).map((s) => [s.id, `${s.first_name} ${s.last_name}`]),
+  )
 
   return (
     <ProtectedRoute>
@@ -65,38 +57,117 @@ export default function FollowupsPage() {
             </div>
           ) : (
             followUps.map(task => (
-              <div key={task.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
-                <div className={`h-1 w-full ${
-                  task.priority === 'high' ? 'bg-red-500' : task.priority === 'medium' ? 'bg-yellow-400' : 'bg-gray-300'
-                }`} />
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex justify-between items-start mb-3">
-                    <Badge variant="neutral" className="uppercase">{task.type.replace('_', ' ')}</Badge>
-                    <FollowUpStatusBadge status={task.status} />
-                  </div>
-                  <h3 className="font-medium text-gray-900 text-base mb-2">{task.description}</h3>
-                  <div className="flex items-center gap-2 mt-auto pt-4 text-xs text-gray-500">
-                     <span>Due: {formatDate(task.due_date)}</span>
-                     {task.priority && <FollowUpPriorityBadge priority={task.priority} />}
-                  </div>
-                </div>
-                {task.status !== 'completed' && task.status !== 'cancelled' && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
-                    <Button
-                       variant="outline"
-                       size="sm"
-                       onClick={() => {/* Mock resolve */}}
-                       disabled={resolvingId === task.id}
-                    >
-                      {resolvingId === task.id ? 'Marking...' : 'Mark Complete'}
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <FollowUpCard key={task.id} task={task} studentNames={studentNames} />
             ))
           )}
         </div>
       </DashboardLayout>
     </ProtectedRoute>
+  )
+}
+
+function FollowUpCard({
+  task,
+  studentNames,
+}: {
+  task: FollowUpResponse
+  studentNames: Map<string, string>
+}) {
+  const { mutateAsync: completeTask, isPending } = useCompleteFollowUp(task.id)
+  const [showForm, setShowForm] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [error, setError] = useState('')
+
+  const canResolve = task.status !== 'completed' && task.status !== 'cancelled'
+  const studentName = studentNames.get(task.student_id) ?? task.student_id.substring(0, 8) + '…'
+
+  const handleResolve = async () => {
+    setError('')
+    try {
+      await completeTask(notes || 'Resolved from dashboard UI')
+      setShowForm(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to complete task')
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+      <div
+        className={`h-1 w-full ${
+          task.priority === 'high'
+            ? 'bg-red-500'
+            : task.priority === 'medium'
+              ? 'bg-yellow-400'
+              : 'bg-gray-300'
+        }`}
+      />
+      <div className="p-5 flex-1 flex flex-col">
+        <div className="flex justify-between items-start mb-3">
+          <Badge variant="neutral" className="uppercase">
+            {task.type.replace('_', ' ')}
+          </Badge>
+          <FollowUpStatusBadge status={task.status} />
+        </div>
+        <h3 className="font-medium text-gray-900 text-base mb-2">
+          {task.description}
+        </h3>
+        <div className="text-sm text-gray-600 mb-2">
+          Student:{' '}
+          <Link href={`/students/${task.student_id}`} className="text-primary-600 hover:underline">
+            {studentName}
+          </Link>
+        </div>
+        <div className="flex items-center gap-2 mt-auto pt-4 text-xs text-gray-500">
+          <span>Due: {formatDate(task.due_date)}</span>
+          {task.priority && <FollowUpPriorityBadge priority={task.priority} />}
+        </div>
+      </div>
+
+      {canResolve && (
+        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
+          {showForm ? (
+            <div className="space-y-3">
+              <textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="How was this resolved? (optional)"
+                className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              />
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowForm(false)
+                    setNotes('')
+                    setError('')
+                  }}
+                  disabled={isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleResolve}
+                  disabled={isPending}
+                >
+                  {isPending ? 'Completing…' : 'Confirm'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
+                Mark Complete
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

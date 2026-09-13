@@ -67,6 +67,7 @@ async def list_absence_reports(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     student_id: str = Query(None, description="Filter by student ID"),
+    call_id: str = Query(None, description="Filter by call ID"),
     min_confidence: float = Query(None, ge=0.0, le=1.0, description="Minimum confidence score"),
     requires_review: bool = Query(None, description="Filter reports requiring review"),
     current_user: User = Depends(require_faculty),
@@ -78,6 +79,7 @@ async def list_absence_reports(
     - **skip**: Number of records to skip
     - **limit**: Maximum number of records to return
     - **student_id**: Optional student ID filter
+    - **call_id**: Optional call ID filter
     - **min_confidence**: Optional minimum confidence filter
     - **requires_review**: Filter for reports needing review (confidence < 0.85 or follow_up_required)
     """
@@ -86,6 +88,8 @@ async def list_absence_reports(
     filters = []
     if student_id:
         filters.append(AbsenceReport.student_id == student_id)
+    if call_id:
+        filters.append(AbsenceReport.call_id == call_id)
     if min_confidence is not None:
         filters.append(AbsenceReport.confidence_score >= min_confidence)
     if requires_review is True:

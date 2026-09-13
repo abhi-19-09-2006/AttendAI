@@ -165,12 +165,24 @@ export function useCampaigns() {
   })
 }
 
+export function useRetryCall(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiClient.post<CallResponse>(`/api/calls/${id}/retry`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['calls'] })
+      qc.invalidateQueries({ queryKey: ['calls', id] })
+    },
+  })
+}
+
 // ─── Absence Reports ──────────────────────────────────────────────────────────
 
 export function useAbsenceReports(params?: {
   skip?: number
   limit?: number
   student_id?: string
+  call_id?: string
   min_confidence?: number
   requires_review?: boolean
 }) {
