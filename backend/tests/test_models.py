@@ -46,6 +46,8 @@ async def test_user_creation(db_session: AsyncSession):
     assert saved_user.is_active is True
 
 
+from sqlalchemy.orm import selectinload
+
 @pytest.mark.asyncio
 async def test_student_parent_relationship(db_session: AsyncSession):
     """Test student-parent relationship."""
@@ -72,7 +74,9 @@ async def test_student_parent_relationship(db_session: AsyncSession):
     await db_session.commit()
 
     result = await db_session.execute(
-        select(Student).where(Student.student_id == "TEST001")
+        select(Student)
+        .options(selectinload(Student.parents))
+        .where(Student.student_id == "TEST001")
     )
     saved_student = result.scalar_one()
 

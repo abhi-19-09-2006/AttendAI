@@ -107,7 +107,8 @@ class MockVoiceProvider(VoiceProvider):
                 self.calls[provider_call_id]["ended_at"] -
                 self.calls[provider_call_id]["initiated_at"]
             ).total_seconds()
-            self.calls[provider_call_id]["duration_seconds"] = int(duration)
+            # A simulated answered call is always at least 1 second long.
+            self.calls[provider_call_id]["duration_seconds"] = max(1, int(duration))
 
             logger.info(f"Mock call answered: {provider_call_id}")
 

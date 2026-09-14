@@ -3,7 +3,7 @@ Pydantic schemas for absence information extraction.
 """
 from typing import Optional, Any, Dict, Union
 from datetime import date
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 
@@ -124,36 +124,33 @@ class ExtractedAbsenceInfo(BaseModel):
 
         return data
 
-    @field_validator("confidence_level", mode="before")
-    @classmethod
-    def derive_confidence_level(cls, v, info):
-        """Derive confidence level from score."""
-        score = info.data.get("confidence_score", 0.0)
+    @model_validator(mode="after")
+    def derive_confidence_and_followup(self) -> "ExtractedAbsenceInfo":
+        """
+        Derive derived fields after all inputs are validated.
+
+        Runs at model level so ``confidence_score`` is always available
+        (field-level ``info.data`` depends on field declaration order and is
+        unreliable here). Preserves an explicit ``follow_up_required=True``
+        and only forces one when confidence is low or a refusal is flagged.
+        """
+        score = self.confidence_score
 
         if score >= 0.85:
-            return ExtractionConfidence.HIGH
+            self.confidence_level = ExtractionConfidence.HIGH
         elif score >= 0.70:
-            return ExtractionConfidence.MEDIUM
+            self.confidence_level = ExtractionConfidence.MEDIUM
         elif score >= 0.50:
-            return ExtractionConfidence.LOW
+            self.confidence_level = ExtractionConfidence.LOW
         else:
-            return ExtractionConfidence.VERY_LOW
+            self.confidence_level = ExtractionConfidence.VERY_LOW
 
-    @field_validator("follow_up_required", mode="before")
-    @classmethod
-    def auto_flag_low_confidence(cls, v, info):
-        """Automatically require follow-up for low confidence or refusals."""
-        score = info.data.get("confidence_score", 0.0)
+        notes = self.notes or ""
+        refusal_markers = ("refused", "declined", "won't say", "private matter", "callback")
+        if score < 0.85 or any(marker in notes.lower() for marker in refusal_markers):
+            self.follow_up_required = True
 
-        # Always require follow-up if confidence < 0.85
-        if score < 0.85:
-            return True
-
-        notes = info.data.get("notes", "")
-        if notes and any(word in str(notes).lower() for word in ["refused", "declined", "won't say", "private matter", "callback"]):
-            return True
-
-        return v
+        return self
 
     def to_canonical_dict(self) -> Dict[str, Any]:
         """

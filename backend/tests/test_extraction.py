@@ -1,6 +1,7 @@
 """
 Unit tests for AI transcript extraction service, prompt management, and schema validation.
 """
+import json
 import pytest
 from datetime import date
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -218,6 +219,41 @@ class TestExtractedAbsenceInfoSchema:
                 call_outcome="completed"
             )
 
+    def test_confidence_threshold_boundaries(self):
+        """Regression: confidence_level must reflect confidence_score at all threshold boundaries."""
+        cases = [
+            (0.95, ExtractionConfidence.HIGH),
+            (0.85, ExtractionConfidence.HIGH),    # boundary: >= 0.85
+            (0.84, ExtractionConfidence.MEDIUM),
+            (0.70, ExtractionConfidence.MEDIUM),  # boundary: >= 0.70
+            (0.69, ExtractionConfidence.LOW),
+            (0.50, ExtractionConfidence.LOW),     # boundary: >= 0.50
+            (0.49, ExtractionConfidence.VERY_LOW),
+            (0.0, ExtractionConfidence.VERY_LOW),
+        ]
+        for score, expected in cases:
+            info = ExtractedAbsenceInfo(
+                confidence_score=score,
+                category=AbsenceCategoryEnum.UNKNOWN,
+                parent_confirmed=False,
+                follow_up_required=False,
+                call_outcome="completed",
+            )
+            assert info.confidence_level == expected, f"score {score} -> {info.confidence_level}"
+
+    def test_high_confidence_explicit_followup_preserved(self):
+        """Regression: explicit follow_up_required=True is preserved at high confidence."""
+        info = ExtractedAbsenceInfo(
+            reason="Stomach flu",
+            category=AbsenceCategoryEnum.MEDICAL,
+            confidence_score=0.95,
+            parent_confirmed=True,
+            follow_up_required=True,  # explicitly requested follow-up
+            call_outcome="completed",
+        )
+        assert info.confidence_level == ExtractionConfidence.HIGH
+        assert info.follow_up_required is True
+
 
 # ============================================================================
 # Prompt Management Tests
@@ -321,7 +357,7 @@ class TestExtractionCases:
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
             mock_message = MagicMock()
             mock_func = MagicMock()
-            mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
+            mock_func.arguments = json.dumps(mock_response)
             mock_message.function_call = mock_func
             mock_choice = MagicMock()
             mock_choice.message = mock_message
@@ -396,7 +432,7 @@ class TestExtractionCases:
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
             mock_message = MagicMock()
             mock_func = MagicMock()
-            mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
+            mock_func.arguments = json.dumps(mock_response)
             mock_message.function_call = mock_func
             mock_choice = MagicMock()
             mock_choice.message = mock_message
@@ -435,7 +471,7 @@ class TestExtractionCases:
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
             mock_message = MagicMock()
             mock_func = MagicMock()
-            mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
+            mock_func.arguments = json.dumps(mock_response)
             mock_message.function_call = mock_func
             mock_choice = MagicMock()
             mock_choice.message = mock_message
@@ -472,7 +508,7 @@ class TestExtractionCases:
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
             mock_message = MagicMock()
             mock_func = MagicMock()
-            mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null")
+            mock_func.arguments = json.dumps(mock_response)
             mock_message.function_call = mock_func
             mock_choice = MagicMock()
             mock_choice.message = mock_message
@@ -511,7 +547,7 @@ class TestExtractionCases:
         with patch.object(extractor.client.chat.completions, 'create', new_callable=AsyncMock) as mock_create:
             mock_message = MagicMock()
             mock_func = MagicMock()
-            mock_func.arguments = str(mock_response).replace("'", '"').replace("True", "true").replace("False", "false")
+            mock_func.arguments = json.dumps(mock_response)
             mock_message.function_call = mock_func
             mock_choice = MagicMock()
             mock_choice.message = mock_message

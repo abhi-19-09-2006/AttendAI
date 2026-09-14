@@ -11,11 +11,13 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models import User, UserRole
 
-security = HTTPBearer()
+# auto_error=False so a missing Authorization header is handled here (401)
+# instead of HTTPBearer's default 403.
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> User:
     """Get the current authenticated user from JWT token."""
@@ -24,6 +26,9 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if credentials is None:
+        raise credentials_exception
 
     token = credentials.credentials
     payload = decode_token(token)

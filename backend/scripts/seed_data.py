@@ -36,7 +36,7 @@ async def seed_users(db: AsyncSession):
     """Seed users."""
     users = [
         User(
-            email="admin@attendai.local",
+            email="admin@attendai.example.com",
             hashed_password=pwd_context.hash("admin123"),
             full_name="Admin User",
             role=UserRole.ADMIN,
@@ -44,7 +44,7 @@ async def seed_users(db: AsyncSession):
             is_active=True,
         ),
         User(
-            email="faculty@attendai.local",
+            email="faculty@attendai.example.com",
             hashed_password=pwd_context.hash("faculty123"),
             full_name="Jane Faculty",
             role=UserRole.FACULTY,
@@ -52,7 +52,7 @@ async def seed_users(db: AsyncSession):
             is_active=True,
         ),
         User(
-            email="staff@attendai.local",
+            email="staff@attendai.example.com",
             hashed_password=pwd_context.hash("staff123"),
             full_name="John Staff",
             role=UserRole.STAFF,
@@ -367,9 +367,9 @@ async def main():
             print(f"   Absence reports: {len(reports)}")
             print(f"   Follow-ups: {len(followups)}")
             print("\n👤 Test Users:")
-            print("   Admin:   admin@attendai.local / admin123")
-            print("   Faculty: faculty@attendai.local / faculty123")
-            print("   Staff:   staff@attendai.local / staff123")
+            print("   Admin:   admin@attendai.example.com / admin123")
+            print("   Faculty: faculty@attendai.example.com / faculty123")
+            print("   Staff:   staff@attendai.example.com / staff123")
 
         except Exception as e:
             await db.rollback()
