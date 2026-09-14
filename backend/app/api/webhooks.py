@@ -21,32 +21,53 @@ vapi_provider = VapiProvider()
 
 def verify_vapi_signature(signature: str, body: bytes) -> bool:
     """
-    Verify Vapi webhook signature.
+    Verify Vapi webhook signature using HMAC-SHA256.
 
     Args:
-        signature: X-Vapi-Signature header value
-        body: Raw request body
+        signature: X-Vapi-Signature header value (hex string)
+        body: Raw request body (bytes)
 
     Returns:
-        True if signature is valid
+        True if signature is valid and matches expected signature
+
+    Reference: Vapi uses HMAC-SHA256 for webhook signatures.
+    The signature header format is: hex(HMAC-SHA256(secret, body))
     """
-    # TODO: Implement actual signature verification using VAPI_WEBHOOK_SECRET
-    # For now, just check if webhook secret is configured
+    import hmac
+    import hashlib
+
+    # Require signature header to be present
+    if not signature:
+        logger.warning("Missing X-Vapi-Signature header in webhook")
+        return False
+
+    # Require secret to be configured
     if not settings.VAPI_WEBHOOK_SECRET:
-        logger.warning("VAPI_WEBHOOK_SECRET not configured - skipping signature verification")
-        return True
+        logger.error("VAPI_WEBHOOK_SECRET not configured - cannot verify webhook signature")
+        return False
 
-    # In production, implement HMAC-SHA256 signature verification:
-    # import hmac
-    # import hashlib
-    # expected = hmac.new(
-    #     settings.VAPI_WEBHOOK_SECRET.encode(),
-    #     body,
-    #     hashlib.sha256
-    # ).hexdigest()
-    # return hmac.compare_digest(signature, expected)
+    try:
+        # Compute expected signature using HMAC-SHA256
+        expected_signature = hmac.new(
+            settings.VAPI_WEBHOOK_SECRET.encode(),
+            body,
+            hashlib.sha256
+        ).hexdigest()
 
-    return True
+        # Use constant-time comparison to prevent timing attacks
+        is_valid = hmac.compare_digest(signature, expected_signature)
+
+        if not is_valid:
+            logger.warning(
+                f"Invalid webhook signature. Expected: {expected_signature[:16]}..., "
+                f"Got: {signature[:16]}..."
+            )
+
+        return is_valid
+
+    except Exception as e:
+        logger.error(f"Error verifying webhook signature: {str(e)}", exc_info=True)
+        return False
 
 
 @router.post("/vapi")
@@ -72,12 +93,12 @@ async def vapi_webhook(
         # Get raw body for signature verification
         body = await request.body()
 
-        # Verify signature
-        if x_vapi_signature and not verify_vapi_signature(x_vapi_signature, body):
-            logger.error("Invalid webhook signature")
+        # Verify signature - reject if missing or invalid
+        if not verify_vapi_signature(x_vapi_signature, body):
+            logger.error("Webhook signature verification failed")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid signature"
+                detail="Invalid or missing webhook signature"
             )
 
         # Parse JSON payload
@@ -131,9 +152,12 @@ async def vapi_webhook(
 
         return {"status": "processed", "correlation_id": correlation_id}
 
+    except HTTPException:
+        # Re-raise HTTP exceptions (e.g., 401 from signature verification)
+        raise
     except Exception as e:
         logger.error(f"Error processing Vapi webhook: {str(e)}", exc_info=True)
-        # Return 200 to prevent Vapi from retrying
+        # Return 200 to prevent Vapi from retrying on application errors
         return {"status": "error", "message": str(e)}
 
 

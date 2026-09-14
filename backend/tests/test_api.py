@@ -24,7 +24,7 @@ async def test_login_success():
         response = await client.post(
             "/api/auth/login",
             json={
-                "email": "admin@attendai.local",
+                "email": "admin@attendai.example.com",
                 "password": "admin123"
             }
         )
@@ -42,7 +42,7 @@ async def test_login_invalid_credentials():
         response = await client.post(
             "/api/auth/login",
             json={
-                "email": "admin@attendai.local",
+                "email": "admin@attendai.example.com",
                 "password": "wrongpassword"
             }
         )
@@ -57,7 +57,7 @@ async def test_get_current_user():
         login_response = await client.post(
             "/api/auth/login",
             json={
-                "email": "faculty@attendai.local",
+                "email": "faculty@attendai.example.com",
                 "password": "faculty123"
             }
         )
@@ -70,7 +70,7 @@ async def test_get_current_user():
         )
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["email"] == "faculty@attendai.local"
+        assert data["email"] == "faculty@attendai.example.com"
         assert data["role"] == "FACULTY"
 
 
@@ -90,7 +90,7 @@ async def test_list_students_authorized():
         login_response = await client.post(
             "/api/auth/login",
             json={
-                "email": "faculty@attendai.local",
+                "email": "faculty@attendai.example.com",
                 "password": "faculty123"
             }
         )
@@ -115,7 +115,7 @@ async def test_get_todays_absentees():
         login_response = await client.post(
             "/api/auth/login",
             json={
-                "email": "faculty@attendai.local",
+                "email": "faculty@attendai.example.com",
                 "password": "faculty123"
             }
         )
@@ -139,7 +139,7 @@ async def test_create_student():
         login_response = await client.post(
             "/api/auth/login",
             json={
-                "email": "faculty@attendai.local",
+                "email": "faculty@attendai.example.com",
                 "password": "faculty123"
             }
         )
@@ -171,7 +171,7 @@ async def test_staff_cannot_access_admin_endpoint():
         login_response = await client.post(
             "/api/auth/login",
             json={
-                "email": "staff@attendai.local",
+                "email": "staff@attendai.example.com",
                 "password": "staff123"
             }
         )

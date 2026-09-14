@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.rate_limit import RateLimitMiddleware
 from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups, webhooks, test_calls
 
 # Setup logging
@@ -36,6 +37,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Rate Limiting Middleware (added before CORS so it runs first)
+app.add_middleware(RateLimitMiddleware)
 
 # CORS Configuration
 app.add_middleware(
