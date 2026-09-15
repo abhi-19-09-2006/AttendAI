@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.rq_config import RQHealthCheck
 
 logger = get_logger("health")
 router = APIRouter()
@@ -49,16 +50,23 @@ async def detailed_health_check():
     """
     Detailed health check including service dependencies.
     """
+    # Check Redis/RQ health
+    redis_health = RQHealthCheck.check_redis()
+    queue_health = RQHealthCheck.check_queues()
+    worker_health = RQHealthCheck.check_workers()
+
     services = {
         "api": {"status": "healthy", "message": "API is operational"},
         "database": {"status": "pending", "message": "Database connection not yet implemented"},
-        "redis": {"status": "pending", "message": "Redis connection not yet implemented"},
+        "redis": redis_health,
+        "rq_queues": queue_health,
+        "rq_workers": worker_health,
         "vapi": {"status": "pending", "message": "Vapi integration not yet implemented"}
     }
 
     # Overall status (all must be healthy)
     overall_status = "healthy" if all(
-        svc["status"] == "healthy" for svc in services.values()
+        svc.get("status") in ["healthy", "ok"] for svc in services.values()
     ) else "degraded"
 
     return DetailedHealthResponse(

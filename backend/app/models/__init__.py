@@ -23,6 +23,7 @@ from app.models.call import Call, CallAttempt
 from app.models.absence_report import AbsenceReport
 from app.models.followup import FollowUp
 from app.models.audit_log import AuditLog
+from app.models.job import Job, JobStatus, JobType
 
 __all__ = [
     "Base",
@@ -37,6 +38,8 @@ __all__ = [
     "FollowUpStatus",
     "ParentRelationship",
     "ContactMethod",
+    "JobStatus",
+    "JobType",
     # Models
     "User",
     "Student",
@@ -48,4 +51,5 @@ __all__ = [
     "AbsenceReport",
     "FollowUp",
     "AuditLog",
+    "Job",
 ]
