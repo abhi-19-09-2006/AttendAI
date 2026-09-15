@@ -71,7 +71,7 @@ async def test_get_current_user():
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["email"] == "faculty@attendai.example.com"
-        assert data["role"] == "FACULTY"
+        assert data["role"] == "faculty"
 
 
 @pytest.mark.asyncio
