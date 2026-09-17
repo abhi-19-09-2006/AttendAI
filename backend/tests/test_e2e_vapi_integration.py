@@ -403,6 +403,7 @@ async def test_e2e_api_visibility(
     db_session: AsyncSession,
     e2e_test_data,
     mock_provider,
+    async_client,
 ):
     """Verify completed call and report are visible through APIs."""
     call_service = CallService(db_session, mock_provider)
@@ -420,31 +421,30 @@ async def test_e2e_api_visibility(
         transcript="Parent: My child is at a doctor appointment.",
     )
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        # Login as faculty
-        login_response = await client.post(
-            "/api/auth/login",
-            json={"email": "faculty@attendai.example.com", "password": "faculty123"},
-        )
-        token = login_response.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    # Login as faculty
+    login_response = await async_client.post(
+        "/api/auth/login",
+        json={"email": "faculty@attendai.example.com", "password": "faculty123"},
+    )
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
 
-        # Verify call visible in API
-        response = await client.get(
-            f"/api/calls/{call.id}",
-            headers=headers,
-        )
-        assert response.status_code == 200
-        call_data = response.json()
-        assert call_data["status"] == "completed"
+    # Verify call visible in API
+    response = await async_client.get(
+        f"/api/calls/{call.id}",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    call_data = response.json()
+    assert call_data["status"] == "completed"
 
-        # Verify absence report visible if created
-        response = await client.get(
-            "/api/absence-reports",
-            headers=headers,
-            params={"call_id": call.id},
-        )
-        assert response.status_code == 200
+    # Verify absence report visible if created
+    response = await async_client.get(
+        "/api/absence-reports",
+        headers=headers,
+        params={"call_id": call.id},
+    )
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio

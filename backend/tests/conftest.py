@@ -63,25 +63,79 @@ async def test_engine():
 
 @pytest.fixture(scope="function")
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a new database session for a test with proper isolation.
-    
-    Uses a connection-scoped transaction that's rolled back after the test,
-    even if the test code commits. This ensures test isolation.
-    """
-    async with test_engine.connect() as conn:
-        trans = await conn.begin()
-        session = AsyncSession(bind=conn, expire_on_commit=False)
+    """Create a new database session for a test."""
+    async_session = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async with async_session() as session:
+        await session.begin()
         try:
             yield session
         finally:
-            await session.close()
-            await trans.rollback()
+            await session.rollback()
 
 
 @pytest.fixture(scope="function")
-def client() -> TestClient:
-    """Create test client for FastAPI endpoints."""
-    return TestClient(app)
+def client(test_engine) -> TestClient:
+    """Create test client for FastAPI endpoints with database override.
+    
+    Overrides the app's get_db() dependency to use the test engine,
+    ensuring HTTP client tests see the same data as db_session tests.
+    """
+    from fastapi.testclient import TestClient
+    from app.core.database import get_db
+    from app.main import app
+    
+    async def override_get_db():
+        async_session = async_sessionmaker(
+            test_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        async with async_session() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+    
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+async def async_client(test_engine):
+    """Create async test client for FastAPI endpoints with database override.
+    
+    Similar to client fixture but returns AsyncClient for async tests.
+    Overrides the app's get_db() dependency to use the test engine.
+    """
+    from httpx import AsyncClient
+    from app.core.database import get_db
+    from app.main import app
+    
+    async def override_get_db():
+        async_session = async_sessionmaker(
+            test_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        async with async_session() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+    
+    app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

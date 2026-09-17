@@ -277,113 +277,131 @@ async def test_summary_empty_range(db_session: AsyncSession, analytics_data):
 
 
 @pytest.mark.asyncio
-async def test_analytics_summary_requires_auth(client):
+async def test_analytics_summary_requires_auth():
     """Summary endpoint requires authentication."""
-    resp = client.get("/api/analytics/summary")
-    assert resp.status_code == 401
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        resp = await client.get("/api/analytics/summary")
+        assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_analytics_summary_authenticated(client, analytics_data):
+async def test_analytics_summary_authenticated(analytics_data):
     """Authenticated faculty can access summary."""
-    # Login as faculty
-    login = client.post("/api/auth/login", json={
-        "email": "faculty@attendai.example.com",
-        "password": "faculty123",
-    })
-    token = login.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        # Login as faculty
+        login = await client.post("/api/auth/login", json={
+            "email": "faculty@attendai.example.com",
+            "password": "faculty123",
+        })
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
 
-    start = (REPORT_DATE - timedelta(days=4)).isoformat()
-    end = REPORT_DATE.isoformat()
-    resp = client.get(
-        f"/api/analytics/summary?date_from={start}&date_to={end}",
-        headers=headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total_absentees"] == 5
-    assert data["completed_calls"] == 3
+        start = (REPORT_DATE - timedelta(days=4)).isoformat()
+        end = REPORT_DATE.isoformat()
+        resp = await client.get(
+            f"/api/analytics/summary?date_from={start}&date_to={end}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_absentees"] == 5
+        assert data["completed_calls"] == 3
 
 
 @pytest.mark.asyncio
-async def test_analytics_call_metrics_endpoint(client, analytics_data):
+async def test_analytics_call_metrics_endpoint(analytics_data):
     """Call metrics endpoint returns correct data."""
-    login = client.post("/api/auth/login", json={
-        "email": "faculty@attendai.example.com",
-        "password": "faculty123",
-    })
-    token = login.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        login = await client.post("/api/auth/login", json={
+            "email": "faculty@attendai.example.com",
+            "password": "faculty123",
+        })
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
 
-    start = (REPORT_DATE - timedelta(days=4)).isoformat()
-    end = REPORT_DATE.isoformat()
-    resp = client.get(
-        f"/api/analytics/call-metrics?date_from={start}&date_to={end}",
-        headers=headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total_calls"] == 5
-    assert data["completion_rate"] == 60.0
+        start = (REPORT_DATE - timedelta(days=4)).isoformat()
+        end = REPORT_DATE.isoformat()
+        resp = await client.get(
+            f"/api/analytics/call-metrics?date_from={start}&date_to={end}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_calls"] == 5
+        assert data["completion_rate"] == 60.0
 
 
 @pytest.mark.asyncio
-async def test_analytics_trends_endpoint(client, analytics_data):
+async def test_analytics_trends_endpoint(analytics_data):
     """Trends endpoint returns daily breakdown."""
-    login = client.post("/api/auth/login", json={
-        "email": "faculty@attendai.example.com",
-        "password": "faculty123",
-    })
-    token = login.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        login = await client.post("/api/auth/login", json={
+            "email": "faculty@attendai.example.com",
+            "password": "faculty123",
+        })
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
 
-    start = (REPORT_DATE - timedelta(days=4)).isoformat()
-    end = REPORT_DATE.isoformat()
-    resp = client.get(
-        f"/api/analytics/trends?date_from={start}&date_to={end}",
-        headers=headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 5
+        start = (REPORT_DATE - timedelta(days=4)).isoformat()
+        end = REPORT_DATE.isoformat()
+        resp = await client.get(
+            f"/api/analytics/trends?date_from={start}&date_to={end}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
 
 
 @pytest.mark.asyncio
-async def test_analytics_reports_daily_endpoint(client, analytics_data):
+async def test_analytics_reports_daily_endpoint(analytics_data):
     """Daily report endpoint works."""
-    login = client.post("/api/auth/login", json={
-        "email": "faculty@attendai.example.com",
-        "password": "faculty123",
-    })
-    token = login.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        login = await client.post("/api/auth/login", json={
+            "email": "faculty@attendai.example.com",
+            "password": "faculty123",
+        })
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
 
-    resp = client.get(
-        f"/api/analytics/reports/daily?report_date={REPORT_DATE.isoformat()}",
-        headers=headers,
-    )
-    assert resp.status_code == 200
-    assert resp.json()["report_type"] == "daily"
+        resp = await client.get(
+            f"/api/analytics/reports/daily?report_date={REPORT_DATE.isoformat()}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["report_type"] == "daily"
 
 
 @pytest.mark.asyncio
-async def test_analytics_reports_unreachable_endpoint(client, analytics_data):
+async def test_analytics_reports_unreachable_endpoint(analytics_data):
     """Unreachable report endpoint works."""
-    login = client.post("/api/auth/login", json={
-        "email": "faculty@attendai.example.com",
-        "password": "faculty123",
-    })
-    token = login.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from httpx import AsyncClient
+    from app.main import app
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        login = await client.post("/api/auth/login", json={
+            "email": "faculty@attendai.example.com",
+            "password": "faculty123",
+        })
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
 
-    start = (REPORT_DATE - timedelta(days=4)).isoformat()
-    end = REPORT_DATE.isoformat()
-    resp = client.get(
-        f"/api/analytics/reports/unreachable?date_from={start}&date_to={end}",
-        headers=headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["report_type"] == "unreachable"
-    assert data["total"] == 1
+        start = (REPORT_DATE - timedelta(days=4)).isoformat()
+        end = REPORT_DATE.isoformat()
+        resp = await client.get(
+            f"/api/analytics/reports/unreachable?date_from={start}&date_to={end}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["report_type"] == "unreachable"
+        assert data["total"] == 1
