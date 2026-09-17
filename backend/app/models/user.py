@@ -45,6 +45,7 @@ class User(Base):
     reviewed_reports = relationship("AbsenceReport", back_populates="reviewed_by_user")
     assigned_followups = relationship("FollowUp", back_populates="assigned_to_user")
     audit_logs = relationship("AuditLog", back_populates="user")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"

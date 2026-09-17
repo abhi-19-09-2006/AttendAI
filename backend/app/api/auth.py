@@ -2,7 +2,7 @@
 Authentication router.
 """
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.schemas import Token, LoginRequest, TokenRefresh, UserCreate, UserResponse
 from app.repositories.user_repository import UserRepository
 from app.models import UserRole
+from app.services.refresh_token_service import RefreshTokenService
+from app.services.audit_service import AuditService
 
 router = APIRouter()
 
@@ -18,6 +20,7 @@ router = APIRouter()
 @router.post("/login", response_model=Token)
 async def login(
     credentials: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -30,6 +33,18 @@ async def login(
     user = await user_repo.get_by_email(credentials.email)
 
     if not user or not verify_password(credentials.password, user.hashed_password):
+        # Log failed login attempt
+        audit_service = AuditService(db)
+        if user:
+            await audit_service.log_authentication(
+                user_id=user.id,
+                action="login",
+                success=False,
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+            await db.commit()
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -42,8 +57,24 @@ async def login(
             detail="User account is inactive"
         )
 
+    # Create access token
     access_token = create_access_token(data={"sub": user.id})
-    refresh_token = create_refresh_token(data={"sub": user.id})
+    
+    # Create database-backed refresh token
+    refresh_token_service = RefreshTokenService(db)
+    refresh_token, _ = await refresh_token_service.create_token(user.id)
+    
+    # Log successful login
+    audit_service = AuditService(db)
+    await audit_service.log_authentication(
+        user_id=user.id,
+        action="login",
+        success=True,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    
+    await db.commit()
 
     return {
         "access_token": access_token,
@@ -55,37 +86,77 @@ async def login(
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     token_refresh: TokenRefresh,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Refresh access token using refresh token.
+    Refresh access token using refresh token with rotation.
 
     - **refresh_token**: Valid refresh token
+    
+    Returns new access token and new refresh token (rotation).
+    Old refresh token is revoked.
     """
-    payload = decode_token(token_refresh.refresh_token)
-
-    if not payload or payload.get("type") != "refresh":
+    # Verify and rotate the refresh token
+    refresh_token_service = RefreshTokenService(db)
+    result = await refresh_token_service.rotate_token(token_refresh.refresh_token)
+    
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            detail="Invalid or expired refresh token"
         )
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload"
-        )
-
-    # Create new tokens
-    access_token = create_access_token(data={"sub": user_id})
-    refresh_token = create_refresh_token(data={"sub": user_id})
+    
+    new_refresh_token, refresh_token_obj = result
+    
+    # Create new access token
+    access_token = create_access_token(data={"sub": refresh_token_obj.user_id})
+    
+    await db.commit()
 
     return {
         "access_token": access_token,
-        "refresh_token": refresh_token,
+        "refresh_token": new_refresh_token,
         "token_type": "bearer"
     }
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    token_refresh: TokenRefresh,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Logout by revoking the refresh token.
+
+    - **refresh_token**: Refresh token to revoke
+    """
+    from app.core.security import decode_token
+    
+    # Decode the refresh token to get user_id
+    payload = decode_token(token_refresh.refresh_token)
+    user_id = payload.get("sub") if payload else None
+    
+    # Revoke the token
+    refresh_token_service = RefreshTokenService(db)
+    token_hash = refresh_token_service._hash_token(token_refresh.refresh_token)
+    await refresh_token_service.revoke_token(token_hash)
+    
+    # Log logout
+    if user_id:
+        audit_service = AuditService(db)
+        await audit_service.log_authentication(
+            user_id=user_id,
+            action="logout",
+            success=True,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    
+    await db.commit()
+    
+    return {"message": "Successfully logged out"}
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

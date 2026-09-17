@@ -1,7 +1,7 @@
 """
 Admin router for system management and oversight.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
@@ -11,6 +11,8 @@ from app.core.auth import require_admin
 from app.core.security import get_password_hash
 from app.models import User, CallCampaign, CampaignStatus
 from app.services.admin_service import AdminService
+from app.services.audit_service import AuditService
+from app.services.refresh_token_service import RefreshTokenService
 from app.repositories.user_repository import UserRepository
 
 router = APIRouter()
@@ -43,6 +45,7 @@ async def get_admin_dashboard(
 async def reset_user_password(
     user_id: str,
     password_data: AdminPasswordReset,
+    request: Request,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -68,6 +71,20 @@ async def reset_user_password(
         )
 
     user.hashed_password = get_password_hash(password_data.new_password)
+    
+    # Revoke all refresh tokens for the user (security: force re-login)
+    refresh_token_service = RefreshTokenService(db)
+    await refresh_token_service.revoke_all_user_tokens(user.id)
+    
+    # Audit log
+    audit_service = AuditService(db)
+    await audit_service.log_password_reset(
+        user_id=user.id,
+        admin_user_id=current_user.id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    
     await db.commit()
 
     return {
@@ -80,6 +97,7 @@ async def reset_user_password(
 async def update_campaign_status(
     campaign_id: str,
     status_data: CampaignStatusUpdate,
+    request: Request,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -117,6 +135,22 @@ async def update_campaign_status(
         )
 
     campaign.status = target
+    
+    # Audit log
+    audit_service = AuditService(db)
+    await audit_service.log_admin_action(
+        admin_user_id=current_user.id,
+        action="campaign_status_update",
+        entity_type="campaign",
+        entity_id=campaign.id,
+        changes={
+            "previous_status": current.value,
+            "new_status": target.value,
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    
     await db.commit()
     await db.refresh(campaign)
 

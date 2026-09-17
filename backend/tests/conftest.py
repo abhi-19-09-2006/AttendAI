@@ -22,7 +22,7 @@ from app.main import app
 # Import all models to ensure they're registered with SQLAlchemy
 from app.models import (
     User, Student, Parent, Attendance, CallCampaign, Call, CallAttempt,
-    AbsenceReport, FollowUp, AuditLog, Job, UserRole
+    AbsenceReport, FollowUp, AuditLog, Job, UserRole, RefreshToken
 )
 
 # Credentials the API auth tests expect to be seeded (see scripts/seed_data.py)

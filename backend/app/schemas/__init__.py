@@ -3,7 +3,7 @@ Pydantic schemas for API request/response validation.
 """
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 
 from app.models.enums import (
     UserRole,
@@ -151,12 +151,40 @@ class ParentUpdate(BaseModel):
 
 
 class ParentResponse(ParentBase):
-    """Parent response schema."""
+    """Parent response schema with masked sensitive data."""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator("primary_phone", mode="before")
+    @classmethod
+    def mask_primary_phone(cls, v: str) -> str:
+        """Mask primary phone number, showing only last 4 digits."""
+        if not v or len(v) < 4:
+            return v
+        return "*" * (len(v) - 4) + v[-4:]
+    
+    @field_validator("secondary_phone", mode="before")
+    @classmethod
+    def mask_secondary_phone(cls, v: Optional[str]) -> Optional[str]:
+        """Mask secondary phone number, showing only last 4 digits."""
+        if not v or len(v) < 4:
+            return v
+        return "*" * (len(v) - 4) + v[-4:]
+    
+    @field_validator("email", mode="before")
+    @classmethod
+    def mask_email(cls, v: Optional[str]) -> Optional[str]:
+        """Mask email address, showing first character and domain."""
+        if not v or "@" not in v:
+            return v
+        local, domain = v.split("@", 1)
+        if len(local) <= 1:
+            return v
+        masked_local = local[0] + "*" * (len(local) - 1)
+        return f"{masked_local}@{domain}"
 
 
 # ============================================================================

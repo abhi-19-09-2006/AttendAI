@@ -24,6 +24,7 @@ from app.models.absence_report import AbsenceReport
 from app.models.followup import FollowUp
 from app.models.audit_log import AuditLog
 from app.models.job import Job, JobStatus, JobType
+from app.models.refresh_token import RefreshToken
 
 __all__ = [
     "Base",
@@ -52,4 +53,5 @@ __all__ = [
     "FollowUp",
     "AuditLog",
     "Job",
+    "RefreshToken",
 ]
