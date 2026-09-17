@@ -27,6 +27,7 @@ async def analytics_data(db_session: AsyncSession):
     """
     Seed attendance, calls, reports, and follow-ups for analytics testing.
     Creates a deterministic dataset for a known date range.
+    Cleans up all created records after the test to prevent data leakage.
     """
     # Get the seeded student
     result = await db_session.execute(
@@ -54,6 +55,12 @@ async def analytics_data(db_session: AsyncSession):
     db_session.add(parent)
     await db_session.flush()
 
+    # Track created IDs for cleanup
+    followup_ids = []
+    absence_report_ids = []
+    call_ids = []
+    attendance_ids = []
+
     # Create 5 days of attendance + calls
     entries = []
     for i in range(5):
@@ -67,6 +74,7 @@ async def analytics_data(db_session: AsyncSession):
         )
         db_session.add(att)
         await db_session.flush()
+        attendance_ids.append(att.id)
 
         # Vary call statuses: 3 completed, 1 no_answer, 1 unreachable
         if i < 3:
@@ -91,6 +99,7 @@ async def analytics_data(db_session: AsyncSession):
         )
         db_session.add(call)
         await db_session.flush()
+        call_ids.append(call.id)
 
         entries.append({"attendance": att, "call": call, "date": d})
 
@@ -109,6 +118,7 @@ async def analytics_data(db_session: AsyncSession):
             )
             db_session.add(report)
             await db_session.flush()
+            absence_report_ids.append(report.id)
 
             if i == 0:
                 fu = FollowUp(
@@ -121,9 +131,47 @@ async def analytics_data(db_session: AsyncSession):
                     description="Low confidence test",
                 )
                 db_session.add(fu)
+                await db_session.flush()
+                followup_ids.append(fu.id)
 
     await db_session.commit()
-    return entries
+    
+    try:
+        yield entries
+    finally:
+        # Cleanup: delete in reverse dependency order
+        from sqlalchemy import delete
+        
+        # Delete follow-ups
+        if followup_ids:
+            await db_session.execute(
+                delete(FollowUp).where(FollowUp.id.in_(followup_ids))
+            )
+        
+        # Delete absence reports
+        if absence_report_ids:
+            await db_session.execute(
+                delete(AbsenceReport).where(AbsenceReport.id.in_(absence_report_ids))
+            )
+        
+        # Delete calls
+        if call_ids:
+            await db_session.execute(
+                delete(Call).where(Call.id.in_(call_ids))
+            )
+        
+        # Delete attendance records
+        if attendance_ids:
+            await db_session.execute(
+                delete(Attendance).where(Attendance.id.in_(attendance_ids))
+            )
+        
+        # Delete parent (created by this fixture)
+        await db_session.execute(
+            delete(Parent).where(Parent.id == parent.id)
+        )
+        
+        await db_session.commit()
 
 
 # ── Service Tests ───────────────────────────────────────────────────────────
