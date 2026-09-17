@@ -99,3 +99,5 @@ recordings/
 
 # Call transcripts (sensitive data)
 transcripts/
+
+backend/.env.test
