@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.models import Call
 from app.models.enums import CallStatus
 from app.services.vapi_provider import VapiProvider
 from app.services.call_service import CallService
@@ -143,7 +144,7 @@ async def vapi_webhook(
 
         elif event_type in ["call.started", "status-update"]:
             # Update call status
-            call = await db.get(call_service.db.bind, correlation_id)
+            call = await db.get(Call, correlation_id)
             if call:
                 if call_status == "in-progress":
                     call.status = CallStatus.ANSWERED
