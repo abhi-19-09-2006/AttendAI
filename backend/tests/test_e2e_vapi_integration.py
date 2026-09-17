@@ -10,6 +10,7 @@ import pytest
 import hmac
 import hashlib
 import json
+import uuid
 from datetime import date, datetime
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,9 +41,10 @@ async def e2e_test_data(db_session: AsyncSession):
     )
     faculty = result.scalar_one()
 
-    # Create student
+    # Create student with unique ID to prevent conflicts across tests
+    unique_id = str(uuid.uuid4())[:8]
     student = Student(
-        student_id="E2E001",
+        student_id=f"E2E{unique_id}",
         first_name="E2E",
         last_name="TestStudent",
         date_of_birth=date(2010, 1, 1),
@@ -93,9 +95,12 @@ def mock_provider():
 
 
 @pytest.fixture
-def webhook_secret():
-    """Get webhook secret for signature generation."""
-    return settings.VAPI_WEBHOOK_SECRET or "test-secret"
+def webhook_secret(monkeypatch):
+    """Get webhook secret for signature generation and configure it in settings."""
+    test_secret = "test-secret"
+    # Configure the secret in settings for this test
+    monkeypatch.setattr("app.core.config.settings.VAPI_WEBHOOK_SECRET", test_secret)
+    return test_secret
 
 
 def generate_webhook_signature(payload: dict, secret: str) -> tuple[str, bytes]:
