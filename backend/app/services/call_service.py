@@ -248,6 +248,14 @@ class CallService:
         """Extract and save absence information from transcript."""
 
         try:
+            # Check if absence report already exists (idempotency for duplicate webhooks)
+            existing_report = await self.db.execute(
+                select(AbsenceReport).where(AbsenceReport.call_id == call.id)
+            )
+            if existing_report.scalar_one_or_none():
+                logger.info(f"Absence report already exists for call {call.id}, skipping")
+                return
+            
             # Get student for context
             student = await self.db.get(Student, call.student_id)
             attendance = await self.db.get(Attendance, call.attendance_id)

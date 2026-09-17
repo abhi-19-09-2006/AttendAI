@@ -274,6 +274,9 @@ async def test_e2e_failed_call_workflow(
     mock_provider,
 ):
     """Test workflow when call fails."""
+    from app.models import Job
+    from app.models.job import JobStatus, JobType
+    
     call_service = CallService(db_session, mock_provider)
     calls = await call_service.create_calls_for_absentees(date.today())
     call = calls[0]
@@ -289,9 +292,22 @@ async def test_e2e_failed_call_workflow(
         transcript=None,
     )
 
-    # Verify call marked for retry or unreachable
+    # Verify call status remains FAILED (retry is scheduled, not immediate)
     await db_session.refresh(call)
-    assert call.status in [CallStatus.PENDING, CallStatus.UNREACHABLE]
+    assert call.status == CallStatus.FAILED
+    
+    # Verify a DEFERRED retry job was created
+    job_result = await db_session.execute(
+        select(Job).where(
+            Job.call_id == call.id,
+            Job.job_type == JobType.RETRY_CALL,
+        )
+    )
+    retry_job = job_result.scalar_one_or_none()
+    assert retry_job is not None
+    assert retry_job.status == JobStatus.DEFERRED
+    assert retry_job.next_retry_at is not None
+    assert retry_job.idempotency_key == f"retry_call_{call.id}_attempt_1"
 
 
 @pytest.mark.asyncio
