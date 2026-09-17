@@ -4,6 +4,8 @@ API integration tests.
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from app.main import app
 
 
@@ -132,7 +134,7 @@ async def test_get_todays_absentees():
 
 
 @pytest.mark.asyncio
-async def test_create_student():
+async def test_create_student(db_session: AsyncSession):
     """Test creating a new student."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         # Login as faculty
@@ -161,6 +163,18 @@ async def test_create_student():
         data = response.json()
         assert data["student_id"] == "TEST999"
         assert data["first_name"] == "Test"
+        
+        # Cleanup: delete the created student to prevent test pollution
+        student_id = data["id"]
+        try:
+            await db_session.execute(
+                text("DELETE FROM students WHERE id = :id"),
+                {"id": student_id}
+            )
+            await db_session.commit()
+        except Exception:
+            # If cleanup fails, don't fail the test
+            await db_session.rollback()
 
 
 @pytest.mark.asyncio
