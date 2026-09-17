@@ -3,7 +3,7 @@ Admin service for system-wide aggregation and management operations.
 """
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 
 from app.core.logging import get_logger
 from app.models import (
@@ -27,44 +27,44 @@ class AdminService:
         # User counts by role
         user_q = select(
             func.count(User.id).label("total"),
-            func.count(func.case((User.role == UserRole.ADMIN, 1))).label("admins"),
-            func.count(func.case((User.role == UserRole.FACULTY, 1))).label("faculty"),
-            func.count(func.case((User.role == UserRole.STAFF, 1))).label("staff"),
-            func.count(func.case((User.is_active == True, 1))).label("active"),
+            func.count(case((User.role == UserRole.ADMIN, 1))).label("admins"),
+            func.count(case((User.role == UserRole.FACULTY, 1))).label("faculty"),
+            func.count(case((User.role == UserRole.STAFF, 1))).label("staff"),
+            func.count(case((User.is_active == True, 1))).label("active"),
         )
         user_row = (await self.db.execute(user_q)).one()
 
         # Student counts
         student_q = select(
             func.count(Student.id).label("total"),
-            func.count(func.case((Student.is_active == True, 1))).label("active"),
+            func.count(case((Student.is_active == True, 1))).label("active"),
         )
         student_row = (await self.db.execute(student_q)).one()
 
         # Campaign counts
         campaign_q = select(
             func.count(CallCampaign.id).label("total"),
-            func.count(func.case((CallCampaign.status == CampaignStatus.ACTIVE, 1))).label("active"),
-            func.count(func.case((CallCampaign.status == CampaignStatus.PAUSED, 1))).label("paused"),
-            func.count(func.case((CallCampaign.status == CampaignStatus.COMPLETED, 1))).label("completed"),
+            func.count(case((CallCampaign.status == CampaignStatus.ACTIVE, 1))).label("active"),
+            func.count(case((CallCampaign.status == CampaignStatus.PAUSED, 1))).label("paused"),
+            func.count(case((CallCampaign.status == CampaignStatus.COMPLETED, 1))).label("completed"),
         )
         campaign_row = (await self.db.execute(campaign_q)).one()
 
         # Call counts
         call_q = select(
             func.count(Call.id).label("total"),
-            func.count(func.case((Call.status == CallStatus.COMPLETED, 1))).label("completed"),
-            func.count(func.case((Call.status == CallStatus.FAILED, 1))).label("failed"),
-            func.count(func.case((Call.status == CallStatus.PENDING, 1))).label("pending"),
+            func.count(case((Call.status == CallStatus.COMPLETED, 1))).label("completed"),
+            func.count(case((Call.status == CallStatus.FAILED, 1))).label("failed"),
+            func.count(case((Call.status == CallStatus.PENDING, 1))).label("pending"),
         )
         call_row = (await self.db.execute(call_q)).one()
 
         # Job counts
         job_q = select(
             func.count(Job.id).label("total"),
-            func.count(func.case((Job.status == JobStatus.QUEUED, 1))).label("queued"),
-            func.count(func.case((Job.status == JobStatus.STARTED, 1))).label("started"),
-            func.count(func.case((Job.status == JobStatus.FAILED, 1))).label("failed"),
+            func.count(case((Job.status == JobStatus.QUEUED, 1))).label("queued"),
+            func.count(case((Job.status == JobStatus.STARTED, 1))).label("started"),
+            func.count(case((Job.status == JobStatus.FAILED, 1))).label("failed"),
         )
         job_row = (await self.db.execute(job_q)).one()
 

@@ -63,19 +63,19 @@ async def test_engine():
 
 @pytest.fixture(scope="function")
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a new database session for a test."""
-    async_session = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with async_session() as session:
-        await session.begin()
+    """Create a new database session for a test with proper isolation.
+    
+    Uses a connection-scoped transaction that's rolled back after the test,
+    even if the test code commits. This ensures test isolation.
+    """
+    async with test_engine.connect() as conn:
+        trans = await conn.begin()
+        session = AsyncSession(bind=conn, expire_on_commit=False)
         try:
             yield session
         finally:
-            await session.rollback()
+            await session.close()
+            await trans.rollback()
 
 
 @pytest.fixture(scope="function")
@@ -125,14 +125,15 @@ async def seeded_db(test_engine):
 
 @pytest.fixture(autouse=True)
 async def _dispose_app_engine():
-    """Dispose the shared app engine after each test.
+    """Dispose the shared app engine before and after each test.
 
     pytest-asyncio runs each test on a fresh event loop, but the app engine
     pools asyncpg connections.  Reusing a pooled connection from a previous
     (already closed) loop on Windows crashes with
     ``AttributeError: 'NoneType' object has no attribute 'send'`` because the
-    old ProactorEventLoop's ``_proactor`` is gone.  Disposing after each test
-    forces fresh connections on each test's own loop.
+    old ProactorEventLoop's ``_proactor`` is gone.  Disposing before each test
+    ensures no stale connections exist, and disposing after ensures cleanup.
     """
+    await app_engine.dispose()
     yield
     await app_engine.dispose()

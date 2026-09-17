@@ -3,6 +3,7 @@ Admin router for system management and oversight.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
@@ -70,7 +71,7 @@ async def reset_user_password(
     await db.commit()
 
     return {
-        "message": "Password reset successful",
+        "message": "Password reset successfully",
         "user_email": user.email,
     }
 

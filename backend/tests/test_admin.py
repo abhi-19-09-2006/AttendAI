@@ -116,22 +116,23 @@ async def test_admin_reset_password_success(db_session: AsyncSession):
         )
         token = login_response.json()["access_token"]
 
-        # Reset password
-        response = await client.post(
-            f"/api/admin/users/{staff_user.id}/reset-password",
-            json={"new_password": "newpassword123"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        try:
+            # Reset password
+            response = await client.post(
+                f"/api/admin/users/{staff_user.id}/reset-password",
+                json={"new_password": "newpassword123"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
-        assert response.status_code == 200
-        assert "password reset successfully" in response.json()["message"].lower()
-
-        # Reset back to original password for other tests
-        await client.post(
-            f"/api/admin/users/{staff_user.id}/reset-password",
-            json={"new_password": "staff123"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+            assert response.status_code == 200
+            assert "password reset successfully" in response.json()["message"].lower()
+        finally:
+            # Reset back to original password for other tests (always runs)
+            await client.post(
+                f"/api/admin/users/{staff_user.id}/reset-password",
+                json={"new_password": "staff123"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
 
 @pytest.mark.asyncio
