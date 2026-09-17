@@ -23,6 +23,12 @@ import type {
   CallStatus,
   AttendanceStatus,
   FollowUpStatus,
+  AnalyticsSummary,
+  DailyTrend,
+  CallMetrics,
+  AbsenceReason,
+  UnreachableReport,
+  FollowUpReport,
 } from '@/types'
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -283,5 +289,81 @@ export function useCompleteFollowUp(id: string) {
         })
         .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['followups'] }),
+  })
+}
+
+// ─── Analytics ──────────────────────────────────────────────────────────────
+
+export function useAnalyticsSummary(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'summary', params],
+    queryFn: () =>
+      apiClient.get<AnalyticsSummary>('/api/analytics/summary', { params }).then((r) => r.data),
+  })
+}
+
+export function useAnalyticsTrends(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'trends', params],
+    queryFn: () =>
+      apiClient.get<DailyTrend[]>('/api/analytics/trends', { params }).then((r) => r.data),
+  })
+}
+
+export function useCallMetrics(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'call-metrics', params],
+    queryFn: () =>
+      apiClient.get<CallMetrics>('/api/analytics/call-metrics', { params }).then((r) => r.data),
+  })
+}
+
+export function useAbsenceReasons(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'absence-reasons', params],
+    queryFn: () =>
+      apiClient.get<AbsenceReason[]>('/api/analytics/absence-reasons', { params }).then((r) => r.data),
+  })
+}
+
+export function useDailyReport(reportDate?: string) {
+  return useQuery({
+    queryKey: ['analytics', 'reports', 'daily', reportDate],
+    queryFn: () =>
+      apiClient.get('/api/analytics/reports/daily', { params: { report_date: reportDate } }).then((r) => r.data),
+    enabled: !!reportDate,
+  })
+}
+
+export function useWeeklyReport(endDate?: string) {
+  return useQuery({
+    queryKey: ['analytics', 'reports', 'weekly', endDate],
+    queryFn: () =>
+      apiClient.get('/api/analytics/reports/weekly', { params: { end_date: endDate } }).then((r) => r.data),
+    enabled: !!endDate,
+  })
+}
+
+export function useMonthlyReport(params?: { year?: number; month?: number }) {
+  return useQuery({
+    queryKey: ['analytics', 'reports', 'monthly', params],
+    queryFn: () =>
+      apiClient.get('/api/analytics/reports/monthly', { params }).then((r) => r.data),
+  })
+}
+
+export function useFollowUpReport(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'reports', 'followup', params],
+    queryFn: () =>
+      apiClient.get<FollowUpReport>('/api/analytics/reports/followup', { params }).then((r) => r.data),
+  })
+}
+
+export function useUnreachableReport(params?: { date_from?: string; date_to?: string }) {
+  return useQuery({
+    queryKey: ['analytics', 'reports', 'unreachable', params],
+    queryFn: () =>
+      apiClient.get<UnreachableReport>('/api/analytics/reports/unreachable', { params }).then((r) => r.data),
   })
 }

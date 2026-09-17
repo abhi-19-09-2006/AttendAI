@@ -261,3 +261,76 @@ export interface DashboardStats {
   pendingFollowUps: number
   lowConfidenceReports: number
 }
+
+// ─── Analytics ──────────────────────────────────────────────────────────────
+
+export interface AnalyticsSummary {
+  date_from: string
+  date_to: string
+  total_attendance: number
+  total_absentees: number
+  total_calls: number
+  completed_calls: number
+  no_answer_calls: number
+  busy_calls: number
+  failed_calls: number
+  unreachable_calls: number
+  pending_calls: number
+  answer_rate: number
+  no_answer_rate: number
+  failure_rate: number
+  average_duration_seconds: number | null
+  total_followups: number
+  pending_followups: number
+  completed_followups: number
+}
+
+export interface DailyTrend {
+  date: string
+  total_attendance: number
+  absentees: number
+  calls: number
+  completed_calls: number
+}
+
+export interface CallMetrics {
+  date_from: string
+  date_to: string
+  total_calls: number
+  status_distribution: Record<string, number>
+  answer_rate: number
+  completion_rate: number
+  retry_rate: number
+  average_duration_seconds: number | null
+}
+
+export interface AbsenceReason {
+  category: string
+  count: number
+}
+
+export interface UnreachableEntry {
+  call_id: string
+  student_id: string
+  phone_number: string
+  retry_count: number
+  last_updated: string | null
+}
+
+export interface UnreachableReport {
+  report_type: 'unreachable'
+  date_from: string
+  date_to: string
+  total: number
+  entries: UnreachableEntry[]
+}
+
+export interface FollowUpReport {
+  report_type: 'followup'
+  date_from: string
+  date_to: string
+  total: number
+  by_type: Record<string, number>
+  by_priority: Record<string, number>
+  by_status: Record<string, number>
+}

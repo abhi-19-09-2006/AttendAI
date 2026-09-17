@@ -16,6 +16,7 @@ const navItems = [
   { label: 'Absence Reports', href: '/absence-reports' },
   { label: 'Follow-ups', href: '/followups' },
   { label: 'Call Log', href: '/calls' },
+  { label: 'Analytics', href: '/analytics' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
