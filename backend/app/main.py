@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.rate_limit import RateLimitMiddleware
-from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups, webhooks, test_calls, analytics
+from app.api import health, auth, users, students, parents, attendance, calls, absence_reports, followups, webhooks, test_calls, analytics, admin
 
 # Setup logging
 logger = setup_logging()
@@ -63,6 +63,7 @@ app.include_router(followups.router, prefix="/api/followups", tags=["Follow-ups"
 app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 app.include_router(test_calls.router, prefix="/api/test", tags=["Testing"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.get("/")

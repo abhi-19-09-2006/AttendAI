@@ -367,3 +367,47 @@ export function useUnreachableReport(params?: { date_from?: string; date_to?: st
       apiClient.get<UnreachableReport>('/api/analytics/reports/unreachable', { params }).then((r) => r.data),
   })
 }
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export function useAdminDashboard() {
+  return useQuery({
+    queryKey: ['admin', 'dashboard'],
+    queryFn: () => apiClient.get('/api/admin/dashboard').then((r) => r.data),
+  })
+}
+
+export function useAdminUsers() {
+  return useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: () => apiClient.get<UserResponse[]>('/api/users').then((r) => r.data),
+  })
+}
+
+export function useAdminCampaigns() {
+  return useQuery({
+    queryKey: ['admin', 'campaigns'],
+    queryFn: () => apiClient.get<CampaignResponse[]>('/api/calls/campaigns').then((r) => r.data),
+  })
+}
+
+export function useAdminResetPassword() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      apiClient.post(`/api/admin/users/${userId}/reset-password`, { new_password: newPassword }).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  })
+}
+
+export function useAdminUpdateCampaignStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ campaignId, status }: { campaignId: string; status: string }) =>
+      apiClient.patch(`/api/admin/campaigns/${campaignId}/status`, { status }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'campaigns'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] })
+    },
+  })
+}

@@ -23,6 +23,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
   const pathname = usePathname()
 
+  // Build nav items, adding Admin link for admin users
+  const allNavItems = [
+    ...navItems,
+    ...(user?.role === 'admin' ? [{ label: 'Admin', href: '/admin' }] : []),
+  ]
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
@@ -33,7 +39,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <span className="text-xl font-bold text-primary-600 tracking-tight">AttendAI</span>
               </div>
               <div className="hidden sm:-my-px sm:ml-8 sm:flex sm:space-x-8">
-                {navItems.map((item) => {
+                {allNavItems.map((item) => {
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
                   return (
                     <Link
