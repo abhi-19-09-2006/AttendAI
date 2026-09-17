@@ -333,17 +333,44 @@ class CallService:
         logger.info(f"Created follow-up for report {report.id}")
 
     async def _handle_retry(self, call: Call):
-        """Handle retry logic for failed calls."""
-
-        if call.retry_count >= call.max_retries:
+        """
+        Handle retry logic for failed calls.
+        
+        Schedules a retry through the RQ job infrastructure instead of
+        immediately resetting status to PENDING. The actual retry will
+        be executed by the retry_failed_call task after the backoff delay.
+        """
+        # Import here to avoid circular dependency
+        from app.tasks import _schedule_retry_async
+        
+        next_retry_number = call.retry_count + 1
+        
+        if next_retry_number > call.max_retries:
             call.status = CallStatus.UNREACHABLE
-            logger.warning(f"Call {call.id} exceeded max retries")
+            await self.db.commit()
+            logger.warning(f"Call {call.id} exceeded max retries ({call.max_retries})")
+            return
+        
+        # Schedule retry through RQ infrastructure
+        # This creates a DEFERRED job with backoff delay
+        # The call status remains as NO_ANSWER/BUSY/FAILED so the scheduler
+        # can verify it's still retryable when the job runs
+        result = await _schedule_retry_async(
+            call_id=call.id,
+            retry_number=next_retry_number,
+            session=self.db
+        )
+        
+        if result.get("status") == "scheduled":
+            logger.info(
+                f"Scheduled retry {next_retry_number} for call {call.id} "
+                f"at {result.get('next_retry_at')}"
+            )
+        elif result.get("status") == "skipped":
+            reason = result.get("reason", "unknown")
+            logger.info(f"Retry skipped for call {call.id}: {reason}")
         else:
-            call.retry_count += 1
-            call.status = CallStatus.PENDING
-            logger.info(f"Scheduled retry {call.retry_count} for call {call.id}")
-
-        await self.db.commit()
+            logger.error(f"Failed to schedule retry for call {call.id}: {result}")
 
     async def get_call_statistics(self, campaign_id: Optional[str] = None) -> dict:
         """

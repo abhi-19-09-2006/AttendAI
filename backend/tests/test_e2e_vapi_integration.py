@@ -216,6 +216,9 @@ async def test_e2e_no_answer_workflow(
     mock_provider,
 ):
     """Test workflow when call is not answered."""
+    from app.models import Job
+    from app.models.job import JobStatus, JobType
+
     attendance = e2e_test_data["attendance"]
 
     # Create and initiate call
@@ -234,11 +237,22 @@ async def test_e2e_no_answer_workflow(
         transcript=None,
     )
 
-    # Verify call marked for retry
+    # Verify call status remains NO_ANSWER (retry is scheduled, not immediate)
     await db_session.refresh(call)
-    # Note: _handle_retry increments retry_count and sets status back to PENDING
-    # unless max_retries exceeded
-    assert call.status in [CallStatus.PENDING, CallStatus.UNREACHABLE]
+    assert call.status == CallStatus.NO_ANSWER
+    
+    # Verify a DEFERRED retry job was created
+    job_result = await db_session.execute(
+        select(Job).where(
+            Job.call_id == call.id,
+            Job.job_type == JobType.RETRY_CALL,
+        )
+    )
+    retry_job = job_result.scalar_one_or_none()
+    assert retry_job is not None
+    assert retry_job.status == JobStatus.DEFERRED
+    assert retry_job.next_retry_at is not None
+    assert retry_job.idempotency_key == f"retry_call_{call.id}_attempt_1"
     
     # No absence report should be created for no-answer
     report_result = await db_session.execute(
@@ -419,6 +433,9 @@ async def test_e2e_max_retries_exceeded(
     mock_provider,
 ):
     """Test that call is marked UNREACHABLE after max retries."""
+    from app.models import Job
+    from app.models.job import JobStatus, JobType
+
     call_service = CallService(db_session, mock_provider)
     calls = await call_service.create_calls_for_absentees(date.today())
     call = calls[0]
@@ -430,7 +447,7 @@ async def test_e2e_max_retries_exceeded(
     await call_service.initiate_call(call.id)
     await db_session.refresh(call)
 
-    # First no-answer - should retry
+    # First no-answer - should schedule retry
     await call_service.process_call_completion(
         call_id=call.id,
         vapi_call_id=call.vapi_call_id,
@@ -438,14 +455,34 @@ async def test_e2e_max_retries_exceeded(
         transcript=None,
     )
     await db_session.refresh(call)
-    assert call.retry_count == 1
-    assert call.status == CallStatus.PENDING
-
+    
+    # Call status remains NO_ANSWER, retry job created
+    assert call.status == CallStatus.NO_ANSWER
+    assert call.retry_count == 0  # Not incremented yet
+    
+    # Verify DEFERRED job created
+    job_result = await db_session.execute(
+        select(Job).where(
+            Job.call_id == call.id,
+            Job.job_type == JobType.RETRY_CALL,
+            Job.status == JobStatus.DEFERRED,
+        )
+    )
+    retry_job = job_result.scalar_one_or_none()
+    assert retry_job is not None
+    
+    # Simulate retry task running: set retry_count and reset to PENDING
+    # (This is what retry_failed_call task does)
+    call.retry_count = 1
+    call.status = CallStatus.PENDING
+    await db_session.commit()
+    await db_session.refresh(call)
+    
     # Initiate retry
     await call_service.initiate_call(call.id)
     await db_session.refresh(call)
 
-    # Second no-answer - should mark unreachable
+    # Second no-answer - should mark unreachable (retry_count=1 >= max_retries=1)
     await call_service.process_call_completion(
         call_id=call.id,
         vapi_call_id=call.vapi_call_id,
