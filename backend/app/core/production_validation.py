@@ -46,8 +46,6 @@ def validate_production_config() -> None:
         "JWT_SECRET_KEY": settings.JWT_SECRET_KEY,
         "VAPI_API_KEY": settings.VAPI_API_KEY,
         "VAPI_WEBHOOK_SECRET": settings.VAPI_WEBHOOK_SECRET,
-        "OPENAI_API_KEY": settings.OPENAI_API_KEY,
-        "ANTHROPIC_API_KEY": settings.ANTHROPIC_API_KEY,
     }
     
     for field_name, field_value in secret_fields.items():
@@ -64,6 +62,26 @@ def validate_production_config() -> None:
         if field_name in ["SECRET_KEY", "JWT_SECRET_KEY"] and len(field_value) < 32:
             errors.append(f"{field_name} must be at least 32 characters")
     
+    # Check LLM provider configuration (provider-specific)
+    if settings.LLM_PROVIDER == "openai":
+        if not settings.OPENAI_API_KEY:
+            errors.append("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+        else:
+            # Check for unsafe placeholder values
+            for unsafe in unsafe_secrets:
+                if unsafe in settings.OPENAI_API_KEY.lower():
+                    errors.append("OPENAI_API_KEY contains unsafe placeholder value")
+                    break
+    elif settings.LLM_PROVIDER == "anthropic":
+        if not settings.ANTHROPIC_API_KEY:
+            errors.append("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
+        else:
+            # Check for unsafe placeholder values
+            for unsafe in unsafe_secrets:
+                if unsafe in settings.ANTHROPIC_API_KEY.lower():
+                    errors.append("ANTHROPIC_API_KEY contains unsafe placeholder value")
+                    break
+    
     # Check DEBUG is disabled in production
     if settings.DEBUG:
         errors.append("DEBUG must be False in production")
@@ -78,20 +96,6 @@ def validate_production_config() -> None:
     # Check database URL is not using dev credentials
     if "attendai_dev_password" in settings.DATABASE_URL:
         errors.append("DATABASE_URL must not use development password in production")
-    
-    # Check required Vapi configuration
-    if not settings.VAPI_API_KEY:
-        errors.append("VAPI_API_KEY is required for production")
-    
-    if not settings.VAPI_WEBHOOK_SECRET:
-        errors.append("VAPI_WEBHOOK_SECRET is required for production")
-    
-    # Check LLM provider configuration
-    if settings.LLM_PROVIDER == "openai" and not settings.OPENAI_API_KEY:
-        errors.append("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
-    
-    if settings.LLM_PROVIDER == "anthropic" and not settings.ANTHROPIC_API_KEY:
-        errors.append("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
     
     # Report errors
     if errors:
