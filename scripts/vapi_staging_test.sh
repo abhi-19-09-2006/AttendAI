@@ -84,7 +84,7 @@ echo ""
 # Helper function to extract ID from JSON response using Python
 extract_id() {
     local json_response="$1"
-    python3 -c "import sys, json; data = json.loads(sys.argv[1]); print(data.get('id', ''))" "$json_response" 2>/dev/null || echo ""
+    python -c "import sys, json; data = json.loads(sys.argv[1]); print(data.get('id', ''))" "$json_response" 2>/dev/null || echo ""
 }
 
 # Generate unique test identifier for this run
