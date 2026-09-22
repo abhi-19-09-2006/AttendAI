@@ -8,9 +8,15 @@ from sqlalchemy import select, and_
 
 from app.core.database import get_db
 from app.core.auth import require_faculty
+from app.core.logging import get_logger
+from app.core.rq_config import get_call_queue
 from app.schemas import CallResponse, CallCreate, CallUpdate, CampaignResponse, CampaignCreate, CampaignUpdate
-from app.models import User, Call, CallCampaign, Student, Parent, Attendance, CallStatus
+from app.models import User, Call, CallCampaign, Student, Parent, Attendance, CallStatus, JobType
 from app.services.call_service import CallService
+from app.services.job_service import JobService
+from app.tasks import initiate_pending_call
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -154,6 +160,31 @@ async def create_call(
     await db.flush()
     await db.refresh(call)
     await db.commit()
+
+    # Enqueue RQ job to initiate the call (same pattern as campaign calls)
+    try:
+        job_service = JobService(db)
+        idempotency_key = f"individual_call_{call.id}"
+        
+        db_job = await job_service.create_job(
+            job_type=JobType.INITIATE_CALL,
+            call_id=call.id,
+            idempotency_key=idempotency_key
+        )
+
+        queue = get_call_queue()
+        rq_job = queue.enqueue(
+            initiate_pending_call,
+            call.id,
+            db_job.id,
+            job_id=f"call_{call.id}"
+        )
+
+        await job_service.link_rq_job(db_job.id, rq_job.id)
+        logger.info(f"Enqueued call {call.id} for initiation via RQ job {rq_job.id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue call {call.id} for initiation: {str(e)}", exc_info=True)
+        # Don't fail the API response - the call record is created, enqueue can be retried
 
     return call
 

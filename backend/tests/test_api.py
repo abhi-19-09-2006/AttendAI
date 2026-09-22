@@ -197,3 +197,120 @@ async def test_staff_cannot_access_admin_endpoint():
             headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_create_call_enqueues_rq_job(db_session: AsyncSession):
+    """Test that POST /api/calls creates a call and enqueues initiate_pending_call job."""
+    from unittest.mock import patch, MagicMock
+    from app.models import Student, Parent, Attendance, Call, CallStatus
+    from app.models.enums import AttendanceStatus
+    from datetime import date
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        # Login as faculty
+        login_response = await client.post(
+            "/api/auth/login",
+            json={
+                "email": "faculty@attendai.example.com",
+                "password": "faculty123"
+            }
+        )
+        token = login_response.json()["access_token"]
+        
+        # Create test student
+        student_response = await client.post(
+            "/api/students",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "student_id": "CALL_TEST_001",
+                "first_name": "CallTest",
+                "last_name": "Student",
+                "date_of_birth": "2010-01-01",
+                "grade_level": 10
+            }
+        )
+        student_id = student_response.json()["id"]
+        
+        # Create test parent
+        parent_response = await client.post(
+            "/api/parents",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "student_id": student_id,
+                "first_name": "CallTest",
+                "last_name": "Parent",
+                "primary_phone": "+15551234567",
+                "relationship": "guardian",
+                "is_primary": True
+            }
+        )
+        parent_id = parent_response.json()["id"]
+        
+        # Create test attendance
+        attendance_response = await client.post(
+            "/api/attendance",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "student_id": student_id,
+                "date": date.today().isoformat(),
+                "status": "absent"
+            }
+        )
+        attendance_id = attendance_response.json()["id"]
+        
+        # Mock RQ queue to verify enqueue is called
+        with patch('app.api.calls.get_call_queue') as mock_get_queue:
+            mock_queue = MagicMock()
+            mock_rq_job = MagicMock()
+            mock_rq_job.id = "test-rq-job-id"
+            mock_queue.enqueue.return_value = mock_rq_job
+            mock_get_queue.return_value = mock_queue
+            
+            # Create call
+            response = await client.post(
+                "/api/calls",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "student_id": student_id,
+                    "parent_id": parent_id,
+                    "attendance_id": attendance_id
+                }
+            )
+            
+            assert response.status_code == status.HTTP_201_CREATED
+            data = response.json()
+            assert data["status"] == "pending"
+            assert data["student_id"] == student_id
+            assert data["parent_id"] == parent_id
+            assert data["attendance_id"] == attendance_id
+            
+            # Verify RQ enqueue was called
+            mock_queue.enqueue.assert_called_once()
+            call_args = mock_queue.enqueue.call_args
+            assert call_args[0][0].__name__ == "initiate_pending_call"
+            assert call_args[0][1] == data["id"]  # call_id
+            assert "job_id" in call_args[1]
+            assert call_args[1]["job_id"] == f"call_{data['id']}"
+        
+        # Cleanup
+        try:
+            await db_session.execute(
+                text("DELETE FROM calls WHERE student_id = :id"),
+                {"id": student_id}
+            )
+            await db_session.execute(
+                text("DELETE FROM attendance WHERE student_id = :id"),
+                {"id": student_id}
+            )
+            await db_session.execute(
+                text("DELETE FROM parents WHERE student_id = :id"),
+                {"id": student_id}
+            )
+            await db_session.execute(
+                text("DELETE FROM students WHERE id = :id"),
+                {"id": student_id}
+            )
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
