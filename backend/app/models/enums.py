@@ -33,6 +33,7 @@ class CallStatus(str, enum.Enum):
     CALLBACK_REQUESTED = "callback_requested"
     FOLLOW_UP_REQUIRED = "follow_up_required"
     UNREACHABLE = "unreachable"
+    CANCELLED = "cancelled"
 
 
 class CampaignStatus(str, enum.Enum):

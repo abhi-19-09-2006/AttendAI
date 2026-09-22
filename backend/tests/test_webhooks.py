@@ -80,7 +80,8 @@ class TestVapiWebhookSignatureVerification:
                     with patch("app.api.webhooks.CallService") as mock_call_service:
                         mock_instance = AsyncMock()
                         mock_call_service.return_value = mock_instance
-                        mock_instance.process_call_completion = AsyncMock()
+                        # Ensure the async method returns a proper value
+                        mock_instance.process_call_completion = AsyncMock(return_value=None)
 
                         response = await client.post(
                             "/webhooks/vapi",
