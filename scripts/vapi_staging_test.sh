@@ -139,8 +139,8 @@ PARENT_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/parents" \
         "student_id": "'"$STUDENT_ID"'",
         "first_name": "Test",
         "last_name": "Parent",
-        "phone_number": "'"$STAGING_TEST_NUMBER"'",
-        "relationship": "parent",
+        "primary_phone": "'"$STAGING_TEST_NUMBER"'",
+        "relationship": "guardian",
         "is_primary": true
     }')
 
