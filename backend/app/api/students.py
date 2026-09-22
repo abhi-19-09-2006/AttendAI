@@ -46,6 +46,7 @@ async def create_student(
 
     created_student = await student_repo.create(student)
     await db.commit()
+    await db.refresh(created_student)
 
     return created_student
 
