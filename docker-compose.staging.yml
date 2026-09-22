@@ -114,6 +114,10 @@ services:
     networks:
       - attendai_staging_network
     command: python -m app.worker --queues calls,retries,campaigns,followups
+    # Disable HTTP healthcheck - workers don't expose HTTP endpoints
+    # Docker monitors container health via process status
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:

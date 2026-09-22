@@ -15,6 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Ensure shell scripts have LF line endings (critical for Linux execution)
+# This fixes issues when building on Windows where files might have CRLF
+RUN find /app/scripts -name "*.sh" -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+
 # Ensure scripts are executable
 RUN chmod +x /app/scripts/*.sh 2>/dev/null || true
 

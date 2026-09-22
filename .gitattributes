@@ -1,0 +1,24 @@
+# Ensure shell scripts always use LF line endings (critical for Docker/Linux)
+*.sh text eol=lf
+
+# Python files should use LF
+*.py text eol=lf
+
+# JavaScript/TypeScript files should use LF
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+
+# Configuration files should use LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+
+# Docker files should use LF
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Documentation can use auto (platform-native)
+*.md text eol=lf
