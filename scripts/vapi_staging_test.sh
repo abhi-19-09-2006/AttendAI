@@ -101,6 +101,8 @@ STUDENT_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/students" \
         "student_id": "STAGING_TEST_001",
         "first_name": "Staging",
         "last_name": "Test",
+        "date_of_birth": "2010-01-01",
+        "grade_level": 10,
         "email": "staging.test@example.com",
         "phone": "'"$STAGING_TEST_NUMBER"'"
     }')
