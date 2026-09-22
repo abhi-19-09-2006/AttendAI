@@ -144,7 +144,7 @@ services:
     networks:
       - attendai_staging_network
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000 || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
