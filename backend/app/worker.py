@@ -10,13 +10,12 @@ import sys
 import signal
 import logging
 from rq import Worker
-from rq.loggers import setup_loggers
 from app.core.rq_config import get_redis_connection
-from app.core.logging import get_logger
+from app.core.logging import get_logger, setup_logging
 
-# Setup logging
+# Setup application logging
+setup_logging()
 logger = get_logger("worker")
-setup_loggers(level=logging.INFO)
 
 
 def handle_shutdown(signum, frame):
