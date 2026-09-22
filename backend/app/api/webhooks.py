@@ -1,10 +1,17 @@
 """
 Vapi webhook handler for receiving call status updates.
+
+Includes:
+- HMAC signature verification
+- Idempotency protection against duplicate webhooks
+- PII redaction in logs
+- Graceful error handling
 """
 from typing import Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -13,6 +20,7 @@ from app.models import Call
 from app.models.enums import CallStatus
 from app.services.vapi_provider import VapiProvider
 from app.services.call_service import CallService
+from app.utils.pii_redaction import redact_signature, redact_phone
 
 logger = get_logger("webhooks")
 router = APIRouter()
@@ -89,6 +97,11 @@ async def vapi_webhook(
     Each webhook contains:
     - message.type: Event type
     - call: Call data including metadata with our correlation_id
+    
+    Security:
+    - HMAC signature verification required
+    - Idempotency protection against duplicate webhooks
+    - PII redaction in logs
     """
     try:
         # Get raw body for signature verification
@@ -96,16 +109,28 @@ async def vapi_webhook(
 
         # Verify signature - reject if missing or invalid
         if not verify_vapi_signature(x_vapi_signature, body):
-            logger.error("Webhook signature verification failed")
+            logger.error(
+                "Webhook signature verification failed",
+                signature=redact_signature(x_vapi_signature)
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or missing webhook signature"
             )
 
         # Parse JSON payload
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except Exception as e:
+            logger.error(f"Failed to parse webhook JSON: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload"
+            )
 
-        logger.info(f"Received Vapi webhook: {payload.get('message', {}).get('type')}")
+        # Extract event type
+        event_type = payload.get("message", {}).get("type", "unknown")
+        logger.info("Received Vapi webhook", event_type=event_type)
 
         # Parse webhook using provider
         parsed = vapi_provider.parse_webhook_payload(payload)
@@ -115,10 +140,44 @@ async def vapi_webhook(
             logger.warning("Webhook missing correlation_id - cannot process")
             return {"status": "ignored", "reason": "missing_correlation_id"}
 
-        # Get the call by our internal ID
+        # Idempotency check: verify call exists and check current state
+        result = await db.execute(
+            select(Call).where(Call.id == correlation_id)
+        )
+        call = result.scalar_one_or_none()
+        
+        if not call:
+            logger.warning(
+                "Webhook for unknown call",
+                correlation_id=correlation_id,
+                event_type=event_type
+            )
+            return {"status": "ignored", "reason": "unknown_call"}
+
+        # Check if call is already in terminal state (idempotency protection)
+        terminal_states = [
+            CallStatus.COMPLETED,
+            CallStatus.FAILED,
+            CallStatus.UNREACHABLE,
+            CallStatus.CANCELLED
+        ]
+        
+        if call.status in terminal_states and event_type not in ["call.started", "status-update"]:
+            logger.info(
+                "Webhook for already-completed call (idempotency)",
+                correlation_id=correlation_id,
+                current_status=call.status.value,
+                event_type=event_type
+            )
+            return {
+                "status": "ignored",
+                "reason": "already_processed",
+                "call_id": correlation_id
+            }
+
+        # Get the call service
         call_service = CallService(db, vapi_provider)
 
-        event_type = parsed.get("event_type", "")
         provider_call_id = parsed.get("provider_call_id")
         call_status = parsed.get("status")
         transcript = parsed.get("transcript")
@@ -126,6 +185,12 @@ async def vapi_webhook(
         # Handle different event types
         if event_type in ["call.ended", "call.completed", "end-of-call-report"]:
             # Call completed - process results
+            logger.info(
+                "Processing call completion",
+                correlation_id=correlation_id,
+                status=call_status,
+                has_transcript=transcript is not None
+            )
             await call_service.process_call_completion(
                 call_id=correlation_id,
                 vapi_call_id=provider_call_id,
@@ -135,6 +200,10 @@ async def vapi_webhook(
 
         elif event_type == "call.failed":
             # Call failed
+            logger.warning(
+                "Processing call failure",
+                correlation_id=correlation_id
+            )
             await call_service.process_call_completion(
                 call_id=correlation_id,
                 vapi_call_id=provider_call_id,
@@ -143,22 +212,48 @@ async def vapi_webhook(
             )
 
         elif event_type in ["call.started", "status-update"]:
-            # Update call status
-            call = await db.get(Call, correlation_id)
+            # Update call status (not terminal, so no idempotency check needed)
             if call:
                 if call_status == "in-progress":
                     call.status = CallStatus.ANSWERED
                     call.answered_at = datetime.utcnow()
-                await db.commit()
+                    await db.commit()
+                    logger.info(
+                        "Call answered",
+                        correlation_id=correlation_id
+                    )
 
+        else:
+            # Unknown event type - log but don't fail
+            logger.warning(
+                "Unknown webhook event type",
+                event_type=event_type,
+                correlation_id=correlation_id
+            )
+            return {
+                "status": "ignored",
+                "reason": "unknown_event_type",
+                "event_type": event_type
+            }
+
+        logger.info(
+            "Webhook processed successfully",
+            correlation_id=correlation_id,
+            event_type=event_type
+        )
         return {"status": "processed", "correlation_id": correlation_id}
 
     except HTTPException:
         # Re-raise HTTP exceptions (e.g., 401 from signature verification)
         raise
     except Exception as e:
-        logger.error(f"Error processing Vapi webhook: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error processing Vapi webhook: {str(e)}",
+            exc_info=True,
+            error_type=type(e).__name__
+        )
         # Return 200 to prevent Vapi from retrying on application errors
+        # This is important: we don't want Vapi to retry if our code has a bug
         return {"status": "error", "message": str(e)}
 
 

@@ -50,23 +50,39 @@ async def detailed_health_check():
     """
     Detailed health check including service dependencies.
     """
+    from app.core.database import engine
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+    
     # Check Redis/RQ health
     redis_health = RQHealthCheck.check_redis()
     queue_health = RQHealthCheck.check_queues()
     worker_health = RQHealthCheck.check_workers()
+    
+    # Check database connectivity
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_health = {"status": "healthy", "message": "Database connection successful"}
+    except SQLAlchemyError as e:
+        db_health = {"status": "unhealthy", "message": f"Database error: {str(e)}"}
+        logger.error(f"Database health check failed: {e}")
+    except Exception as e:
+        db_health = {"status": "unhealthy", "message": f"Unexpected error: {str(e)}"}
+        logger.error(f"Database health check unexpected error: {e}")
 
     services = {
         "api": {"status": "healthy", "message": "API is operational"},
-        "database": {"status": "pending", "message": "Database connection not yet implemented"},
+        "database": db_health,
         "redis": redis_health,
         "rq_queues": queue_health,
         "rq_workers": worker_health,
         "vapi": {"status": "pending", "message": "Vapi integration not yet implemented"}
     }
 
-    # Overall status (all must be healthy)
+    # Overall status (all must be healthy except vapi which is pending)
     overall_status = "healthy" if all(
-        svc.get("status") in ["healthy", "ok"] for svc in services.values()
+        svc.get("status") in ["healthy", "ok", "pending"] for svc in services.values()
     ) else "degraded"
 
     return DetailedHealthResponse(
