@@ -81,12 +81,6 @@ services:
     networks:
       - attendai_staging_network
     command: /app/scripts/start.sh uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     deploy:
       resources:
         limits:
