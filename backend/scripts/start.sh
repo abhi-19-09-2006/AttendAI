@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Wait for PostgreSQL and Redis to be ready before starting the application
 
 set -e

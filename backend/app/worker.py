@@ -59,10 +59,7 @@ def main():
         signal.signal(signal.SIGINT, handle_shutdown)
 
         logger.info("Worker started, listening for jobs...")
-        worker.work(
-            with_scheduler=True,  # Enable job scheduling
-            job_monitoring_interval=30
-        )
+        worker.work()
 
     except Exception as e:
         logger.error(f"Worker failed to start: {str(e)}", exc_info=True)
