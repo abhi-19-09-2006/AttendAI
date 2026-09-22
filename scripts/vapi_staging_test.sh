@@ -81,6 +81,20 @@ fi
 echo "Starting Vapi staging validation..."
 echo ""
 
+# Helper function to extract ID from JSON response using Python
+extract_id() {
+    local json_response="$1"
+    python3 -c "import sys, json; data = json.loads(sys.argv[1]); print(data.get('id', ''))" "$json_response" 2>/dev/null || echo ""
+}
+
+# Generate unique test identifier for this run
+TEST_RUN_ID="STAGING_$(date +%Y%m%d_%H%M%S)"
+TEST_EMAIL="staging.test.${TEST_RUN_ID}@example.com"
+
+echo "Test Run ID: ${TEST_RUN_ID}"
+echo "Test Email: ${TEST_EMAIL}"
+echo ""
+
 # Step 1: Verify health
 echo "Step 1: Verifying system health..."
 HEALTH=$(curl -s "${BASE_URL}/health/detailed")
@@ -98,16 +112,16 @@ STUDENT_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/students" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-        "student_id": "STAGING_TEST_001",
+        "student_id": "'"$TEST_RUN_ID"'",
         "first_name": "Staging",
         "last_name": "Test",
         "date_of_birth": "2010-01-01",
         "grade_level": 10,
-        "email": "staging.test@example.com",
+        "email": "'"$TEST_EMAIL"'",
         "phone": "'"$STAGING_TEST_NUMBER"'"
     }')
 
-STUDENT_ID=$(echo "$STUDENT_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+STUDENT_ID=$(extract_id "$STUDENT_RESPONSE")
 if [[ -z "$STUDENT_ID" ]]; then
     echo "✗ Failed to create test student"
     echo "$STUDENT_RESPONSE"
@@ -122,7 +136,7 @@ PARENT_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/parents" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-        "student_id": '"$STUDENT_ID"',
+        "student_id": "'"$STUDENT_ID"'",
         "first_name": "Test",
         "last_name": "Parent",
         "phone_number": "'"$STAGING_TEST_NUMBER"'",
@@ -130,7 +144,7 @@ PARENT_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/parents" \
         "is_primary": true
     }')
 
-PARENT_ID=$(echo "$PARENT_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+PARENT_ID=$(extract_id "$PARENT_RESPONSE")
 if [[ -z "$PARENT_ID" ]]; then
     echo "✗ Failed to create test parent"
     echo "$PARENT_RESPONSE"
@@ -146,12 +160,12 @@ ABSENCE_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/attendance" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-        "student_id": '"$STUDENT_ID"',
+        "student_id": "'"$STUDENT_ID"'",
         "date": "'"$TODAY"'",
         "status": "absent"
     }')
 
-ATTENDANCE_ID=$(echo "$ABSENCE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+ATTENDANCE_ID=$(extract_id "$ABSENCE_RESPONSE")
 if [[ -z "$ATTENDANCE_ID" ]]; then
     echo "✗ Failed to create absence record"
     echo "$ABSENCE_RESPONSE"
@@ -170,12 +184,12 @@ CALL_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/calls" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
-        "student_id": '"$STUDENT_ID"',
-        "parent_id": '"$PARENT_ID"',
-        "attendance_id": '"$ATTENDANCE_ID"'
+        "student_id": "'"$STUDENT_ID"'",
+        "parent_id": "'"$PARENT_ID"'",
+        "attendance_id": "'"$ATTENDANCE_ID"'"
     }')
 
-CALL_ID=$(echo "$CALL_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+CALL_ID=$(extract_id "$CALL_RESPONSE")
 if [[ -z "$CALL_ID" ]]; then
     echo "✗ Failed to initiate call"
     echo "$CALL_RESPONSE"
