@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     logger.info("AttendAI backend starting up...")
     logger.info(f"Environment: {settings.APP_ENV}")
     logger.info(f"Debug mode: {settings.DEBUG}")
+    
+    # Validate production configuration
+    from app.core.production_validation import validate_startup
+    validate_startup()
 
     yield
 
