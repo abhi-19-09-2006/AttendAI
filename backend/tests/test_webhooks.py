@@ -11,6 +11,7 @@ from unittest.mock import patch, AsyncMock
 
 from app.main import app
 from app.core.config import settings
+from app.core.database import get_db
 
 
 class TestVapiWebhookSignatureVerification:
@@ -53,20 +54,43 @@ class TestVapiWebhookSignatureVerification:
             with patch("app.api.webhooks.settings") as mock_settings:
                 mock_settings.VAPI_WEBHOOK_SECRET = "test-secret"
 
-                with patch("app.api.webhooks.CallService") as mock_call_service:
-                    mock_instance = AsyncMock()
-                    mock_call_service.return_value = mock_instance
-                    mock_instance.process_call_completion = AsyncMock()
+                # Mock the database to return a Call object
+                from app.models import Call
+                from app.models.enums import CallStatus
+                from unittest.mock import MagicMock
+                
+                mock_call = MagicMock(spec=Call)
+                mock_call.id = "test-correlation-id"
+                mock_call.status = CallStatus.CALLING  # Not in terminal state
+                
+                mock_result = MagicMock()
+                mock_result.scalar_one_or_none.return_value = mock_call
+                
+                mock_db = MagicMock()
+                mock_db.execute = AsyncMock(return_value=mock_result)
+                
+                async def override_get_db():
+                    yield mock_db
+                
+                app.dependency_overrides[get_db] = override_get_db
+                
+                try:
+                    with patch("app.api.webhooks.CallService") as mock_call_service:
+                        mock_instance = AsyncMock()
+                        mock_call_service.return_value = mock_instance
+                        mock_instance.process_call_completion = AsyncMock()
 
-                    response = await client.post(
-                        "/webhooks/vapi",
-                        json=payload,
-                        headers={"X-Vapi-Signature": valid_signature}
-                    )
+                        response = await client.post(
+                            "/webhooks/vapi",
+                            json=payload,
+                            headers={"X-Vapi-Signature": valid_signature}
+                        )
 
-                    assert response.status_code == status.HTTP_200_OK
-                    data = response.json()
-                    assert data["status"] == "processed"
+                        assert response.status_code == status.HTTP_200_OK
+                        data = response.json()
+                        assert data["status"] == "processed"
+                finally:
+                    app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
     async def test_webhook_with_invalid_signature(self):
@@ -170,29 +194,52 @@ class TestVapiWebhookSignatureVerification:
             with patch("app.api.webhooks.settings") as mock_settings:
                 mock_settings.VAPI_WEBHOOK_SECRET = "test-secret"
 
-                with patch("app.api.webhooks.CallService") as mock_call_service:
-                    mock_instance = AsyncMock()
-                    mock_call_service.return_value = mock_instance
-                    mock_instance.process_call_completion = AsyncMock()
+                # Mock the database to return a Call object
+                from app.models import Call
+                from app.models.enums import CallStatus
+                from unittest.mock import MagicMock
+                
+                mock_call = MagicMock(spec=Call)
+                mock_call.id = "test-correlation-id"
+                mock_call.status = CallStatus.CALLING  # Not in terminal state
+                
+                mock_result = MagicMock()
+                mock_result.scalar_one_or_none.return_value = mock_call
+                
+                mock_db = MagicMock()
+                mock_db.execute = AsyncMock(return_value=mock_result)
+                
+                async def override_get_db():
+                    yield mock_db
+                
+                app.dependency_overrides[get_db] = override_get_db
+                
+                try:
+                    with patch("app.api.webhooks.CallService") as mock_call_service:
+                        mock_instance = AsyncMock()
+                        mock_call_service.return_value = mock_instance
+                        mock_instance.process_call_completion = AsyncMock()
 
-                    # First request succeeds
-                    response1 = await client.post(
-                        "/webhooks/vapi",
-                        json=payload,
-                        headers={"X-Vapi-Signature": valid_signature}
-                    )
-                    assert response1.status_code == status.HTTP_200_OK
+                        # First request succeeds
+                        response1 = await client.post(
+                            "/webhooks/vapi",
+                            json=payload,
+                            headers={"X-Vapi-Signature": valid_signature}
+                        )
+                        assert response1.status_code == status.HTTP_200_OK
 
-                    # Modified payload with old signature is rejected
-                    modified_payload = payload.copy()
-                    modified_payload["message"]["type"] = "call.started"
+                        # Modified payload with old signature is rejected
+                        modified_payload = payload.copy()
+                        modified_payload["message"]["type"] = "call.started"
 
-                    response2 = await client.post(
-                        "/webhooks/vapi",
-                        json=modified_payload,
-                        headers={"X-Vapi-Signature": valid_signature}
-                    )
-                    assert response2.status_code == status.HTTP_401_UNAUTHORIZED
+                        response2 = await client.post(
+                            "/webhooks/vapi",
+                            json=modified_payload,
+                            headers={"X-Vapi-Signature": valid_signature}
+                        )
+                        assert response2.status_code == status.HTTP_401_UNAUTHORIZED
+                finally:
+                    app.dependency_overrides.clear()
 
 
 class TestWebhookTestEndpoint:
