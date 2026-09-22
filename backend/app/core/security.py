@@ -3,6 +3,7 @@ Security utilities for authentication and authorization.
 """
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import uuid4
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from app.core.config import settings
@@ -39,7 +40,14 @@ def create_refresh_token(data: dict) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    # Add unique JWT ID (jti) to ensure each token is unique even if created
+    # in the same second for the same user. This prevents unique constraint
+    # violations on token_hash in the refresh_tokens table.
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": str(uuid4())
+    })
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
