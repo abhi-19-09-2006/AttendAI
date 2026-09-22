@@ -110,8 +110,10 @@ class VapiClient:
                         error_msg = response.text
                         logger.error(
                             f"Vapi API client error: {response.status_code}",
-                            status_code=response.status_code,
-                            error=error_msg[:200]  # Truncate long errors
+                            extra={
+                                "status_code": response.status_code,
+                                "error": error_msg[:200]  # Truncate long errors
+                            }
                         )
                         raise VapiAPIError(response.status_code, error_msg)
                     
@@ -120,17 +122,17 @@ class VapiClient:
                         logger.warning(
                             f"Vapi API server error (attempt {attempt + 1}/{self.max_retries + 1}): "
                             f"{response.status_code}",
-                            status_code=response.status_code
+                            extra={"status_code": response.status_code}
                         )
                         last_exception = VapiAPIError(response.status_code, response.text)
                     
-                except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
-                    # Network errors are retryable
-                    logger.warning(
-                        f"Vapi network error (attempt {attempt + 1}/{self.max_retries + 1}): {type(e).__name__}",
-                        error_type=type(e).__name__
-                    )
-                    last_exception = e
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
+                # Network errors are retryable
+                logger.warning(
+                    f"Vapi network error (attempt {attempt + 1}/{self.max_retries + 1}): {type(e).__name__}",
+                    extra={"error_type": type(e).__name__}
+                )
+                last_exception = e
                 
                 # Don't retry on last attempt
                 if attempt < self.max_retries:
@@ -223,16 +225,18 @@ class VapiClient:
 
         logger.info(
             "Initiating Vapi call",
-            phone=redact_phone(phone_number),
-            student=student_name,
-            absence_date=absence_date
+            extra={
+                "phone": redact_phone(phone_number),
+                "student": student_name,
+                "absence_date": absence_date
+            }
         )
 
         response = await self._request_with_retry("POST", "/call", json=payload)
         data = response.json()
         
         call_id = data.get("id")
-        logger.info("Vapi call created", call_id=call_id)
+        logger.info("Vapi call created", extra={"call_id": call_id})
         
         return data
 
@@ -250,13 +254,13 @@ class VapiClient:
             VapiAPIError: For API errors
             httpx.HTTPError: For network errors
         """
-        logger.debug("Getting Vapi call status", call_id=call_id)
+        logger.debug("Getting Vapi call status", extra={"call_id": call_id})
         
         response = await self._request_with_retry("GET", f"/call/{call_id}")
         data = response.json()
         
         status = data.get("status")
-        logger.debug("Vapi call status retrieved", call_id=call_id, status=status)
+        logger.debug("Vapi call status retrieved", extra={"call_id": call_id, "status": status})
         
         return data
 
@@ -274,7 +278,7 @@ class VapiClient:
             VapiAPIError: For API errors
             httpx.HTTPError: For network errors
         """
-        logger.debug("Getting Vapi call transcript", call_id=call_id)
+        logger.debug("Getting Vapi call transcript", extra={"call_id": call_id})
         
         data = await self.get_call_status(call_id)
         
@@ -283,8 +287,7 @@ class VapiClient:
         if transcript:
             logger.info(
                 "Vapi transcript retrieved",
-                call_id=call_id,
-                length=len(transcript)
+                extra={"call_id": call_id, "length": len(transcript)}
             )
             return transcript
         
@@ -298,13 +301,15 @@ class VapiClient:
             ])
             logger.info(
                 "Vapi transcript extracted from messages",
-                call_id=call_id,
-                message_count=len(messages),
-                length=len(transcript)
+                extra={
+                    "call_id": call_id,
+                    "message_count": len(messages),
+                    "length": len(transcript)
+                }
             )
             return transcript
         
-        logger.warning("No transcript available for Vapi call", call_id=call_id)
+        logger.warning("No transcript available for Vapi call", extra={"call_id": call_id})
         return None
 
     async def cancel_call(self, call_id: str) -> bool:
@@ -317,12 +322,12 @@ class VapiClient:
         Returns:
             True if cancelled successfully, False otherwise
         """
-        logger.info("Cancelling Vapi call", call_id=call_id)
+        logger.info("Cancelling Vapi call", extra={"call_id": call_id})
         
         try:
             await self._request_with_retry("DELETE", f"/call/{call_id}")
-            logger.info("Vapi call cancelled successfully", call_id=call_id)
+            logger.info("Vapi call cancelled successfully", extra={"call_id": call_id})
             return True
         except Exception as e:
-            logger.error(f"Failed to cancel Vapi call: {type(e).__name__}: {str(e)}", call_id=call_id)
+            logger.error(f"Failed to cancel Vapi call: {type(e).__name__}: {str(e)}", extra={"call_id": call_id})
             return False

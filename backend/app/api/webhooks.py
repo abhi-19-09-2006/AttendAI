@@ -111,7 +111,7 @@ async def vapi_webhook(
         if not verify_vapi_signature(x_vapi_signature, body):
             logger.error(
                 "Webhook signature verification failed",
-                signature=redact_signature(x_vapi_signature)
+                extra={"signature": redact_signature(x_vapi_signature)}
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -130,7 +130,7 @@ async def vapi_webhook(
 
         # Extract event type
         event_type = payload.get("message", {}).get("type", "unknown")
-        logger.info("Received Vapi webhook", event_type=event_type)
+        logger.info("Received Vapi webhook", extra={"event_type": event_type})
 
         # Parse webhook using provider
         parsed = vapi_provider.parse_webhook_payload(payload)
@@ -149,8 +149,7 @@ async def vapi_webhook(
         if not call:
             logger.warning(
                 "Webhook for unknown call",
-                correlation_id=correlation_id,
-                event_type=event_type
+                extra={"correlation_id": correlation_id, "event_type": event_type}
             )
             return {"status": "ignored", "reason": "unknown_call"}
 
@@ -165,9 +164,11 @@ async def vapi_webhook(
         if call.status in terminal_states and event_type not in ["call.started", "status-update"]:
             logger.info(
                 "Webhook for already-completed call (idempotency)",
-                correlation_id=correlation_id,
-                current_status=call.status.value,
-                event_type=event_type
+                extra={
+                    "correlation_id": correlation_id,
+                    "current_status": call.status.value,
+                    "event_type": event_type
+                }
             )
             return {
                 "status": "ignored",
@@ -187,9 +188,11 @@ async def vapi_webhook(
             # Call completed - process results
             logger.info(
                 "Processing call completion",
-                correlation_id=correlation_id,
-                status=call_status,
-                has_transcript=transcript is not None
+                extra={
+                    "correlation_id": correlation_id,
+                    "status": call_status,
+                    "has_transcript": transcript is not None
+                }
             )
             await call_service.process_call_completion(
                 call_id=correlation_id,
@@ -202,7 +205,7 @@ async def vapi_webhook(
             # Call failed
             logger.warning(
                 "Processing call failure",
-                correlation_id=correlation_id
+                extra={"correlation_id": correlation_id}
             )
             await call_service.process_call_completion(
                 call_id=correlation_id,
@@ -220,15 +223,14 @@ async def vapi_webhook(
                     await db.commit()
                     logger.info(
                         "Call answered",
-                        correlation_id=correlation_id
+                        extra={"correlation_id": correlation_id}
                     )
 
         else:
             # Unknown event type - log but don't fail
             logger.warning(
                 "Unknown webhook event type",
-                event_type=event_type,
-                correlation_id=correlation_id
+                extra={"event_type": event_type, "correlation_id": correlation_id}
             )
             return {
                 "status": "ignored",
@@ -238,8 +240,7 @@ async def vapi_webhook(
 
         logger.info(
             "Webhook processed successfully",
-            correlation_id=correlation_id,
-            event_type=event_type
+            extra={"correlation_id": correlation_id, "event_type": event_type}
         )
         return {"status": "processed", "correlation_id": correlation_id}
 
@@ -250,7 +251,7 @@ async def vapi_webhook(
         logger.error(
             f"Error processing Vapi webhook: {str(e)}",
             exc_info=True,
-            error_type=type(e).__name__
+            extra={"error_type": type(e).__name__}
         )
         # Return 200 to prevent Vapi from retrying on application errors
         # This is important: we don't want Vapi to retry if our code has a bug
