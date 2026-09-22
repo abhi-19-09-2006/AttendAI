@@ -68,6 +68,8 @@ class TestVapiWebhookSignatureVerification:
                 
                 mock_db = MagicMock()
                 mock_db.execute = AsyncMock(return_value=mock_result)
+                mock_db.commit = AsyncMock()  # Ensure commit is also async
+                mock_db.refresh = AsyncMock()  # In case refresh is called
                 
                 async def override_get_db():
                     yield mock_db
@@ -208,6 +210,8 @@ class TestVapiWebhookSignatureVerification:
                 
                 mock_db = MagicMock()
                 mock_db.execute = AsyncMock(return_value=mock_result)
+                mock_db.commit = AsyncMock()  # Ensure commit is also async
+                mock_db.refresh = AsyncMock()  # In case refresh is called
                 
                 async def override_get_db():
                     yield mock_db
