@@ -52,8 +52,10 @@ def get_url():
     db_url = settings.DATABASE_URL
     if db_url.startswith("postgresql+asyncpg://"):
         db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-    # Replace 'postgres' host with localhost for local development
-    db_url = db_url.replace("postgres:", "localhost:")
+    # Replace 'postgres' host with localhost for local development only
+    # In staging/production (Docker), use the service hostname as-is
+    if settings.is_development:
+        db_url = db_url.replace("postgres:", "localhost:")
     return db_url
 
 
