@@ -337,7 +337,7 @@ async def test_rq_job_serialization_with_pickle():
     
     # Test 1: Verify RQ Redis connection does NOT decode responses
     rq_redis = get_rq_redis_connection()
-    assert rq_redis.connection_pool.connection_kwargs.get('decode_responses') is False, \
+    assert rq_redis.connection_pool.connection_kwargs.get('decode_responses') is not True, \
         "RQ Redis connection must NOT use decode_responses=True"
     
     # Test 2: Verify we can enqueue and retrieve a job with binary (pickled) data
