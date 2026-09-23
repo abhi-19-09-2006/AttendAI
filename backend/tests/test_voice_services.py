@@ -123,3 +123,163 @@ async def test_mock_provider_parse_webhook():
     assert parsed["status"] == "completed"
     assert parsed["event_type"] == "call.ended"
     assert parsed["transcript"] == "Test transcript"
+
+
+# ============================================================================
+# Vapi Provider Regression Tests
+# ============================================================================
+
+
+def test_phone_normalization_indian_10_digit():
+    """Test Indian 10-digit number becomes E.164 with +91."""
+    from app.services.vapi_provider import normalize_phone_to_e164
+    
+    # 10-digit Indian number
+    result = normalize_phone_to_e164("9876543210")
+    assert result == "+919876543210"
+    
+    # With leading 0
+    result = normalize_phone_to_e164("09876543210")
+    assert result == "+919876543210"
+
+
+def test_phone_normalization_already_e164():
+    """Test already-E.164 numbers are preserved."""
+    from app.services.vapi_provider import normalize_phone_to_e164
+    
+    # Already E.164 Indian
+    result = normalize_phone_to_e164("+919876543210")
+    assert result == "+919876543210"
+    
+    # Already E.164 US
+    result = normalize_phone_to_e164("+14155552671")
+    assert result == "+14155552671"
+
+
+def test_phone_normalization_invalid():
+    """Test invalid phone numbers raise ValueError."""
+    from app.services.vapi_provider import normalize_phone_to_e164
+    
+    # Too short
+    with pytest.raises(ValueError):
+        normalize_phone_to_e164("123")
+    
+    # Empty
+    with pytest.raises(ValueError):
+        normalize_phone_to_e164("")
+
+
+@pytest.mark.asyncio
+async def test_vapi_payload_no_top_level_system_prompt():
+    """Verify Vapi payload does NOT contain assistant.systemPrompt (Vapi 400 error)."""
+    from unittest.mock import AsyncMock, patch
+    from app.services.vapi_provider import VapiProvider
+    from app.services.voice_provider import CallContext
+    
+    provider = VapiProvider()
+    
+    context = CallContext(
+        phone_number="+919876543210",
+        student_name="Test Student",
+        absence_date="2026-09-22",
+        correlation_id="test-call-123"
+    )
+    
+    # Build assistant config
+    assistant_config = provider._build_assistant_config(context)
+    
+    # Verify NO top-level systemPrompt
+    assert "systemPrompt" not in assistant_config, \
+        "assistant.systemPrompt should not exist (Vapi 400 error)"
+
+
+@pytest.mark.asyncio
+async def test_vapi_payload_system_prompt_in_model_messages():
+    """Verify system prompt is in assistant.model.messages as system message."""
+    from app.services.vapi_provider import VapiProvider
+    from app.services.voice_provider import CallContext
+    
+    provider = VapiProvider()
+    
+    context = CallContext(
+        phone_number="+919876543210",
+        student_name="Test Student",
+        absence_date="2026-09-22",
+        correlation_id="test-call-123"
+    )
+    
+    # Build assistant config
+    assistant_config = provider._build_assistant_config(context)
+    
+    # Verify system prompt is in model.messages
+    assert "model" in assistant_config
+    assert "messages" in assistant_config["model"]
+    
+    messages = assistant_config["model"]["messages"]
+    assert len(messages) > 0
+    
+    # Find system message
+    system_messages = [m for m in messages if m["role"] == "system"]
+    assert len(system_messages) == 1, "Should have exactly one system message"
+    
+    system_msg = system_messages[0]
+    assert "content" in system_msg
+    assert "Test Student" in system_msg["content"]
+    assert "2026-09-22" in system_msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_vapi_create_call_normalizes_phone():
+    """Verify create_call normalizes phone number to E.164."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from app.services.vapi_provider import VapiProvider
+    from app.services.voice_provider import CallContext
+    
+    provider = VapiProvider()
+    
+    context = CallContext(
+        phone_number="9876543210",  # Indian 10-digit, no +91
+        student_name="Test Student",
+        absence_date="2026-09-22",
+        correlation_id="test-call-123"
+    )
+    
+    # Mock httpx.AsyncClient
+    with patch('app.services.vapi_provider.httpx.AsyncClient') as mock_client:
+        mock_response = AsyncMock()
+        mock_response.json.return_value = {
+            "id": "vapi_call_123",
+            "status": "queued"
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock()
+        
+        mock_client.return_value = mock_client_instance
+        
+        # Create call
+        result = await provider.create_call(context)
+        
+        # Verify httpx.post was called
+        assert mock_client_instance.post.called
+        
+        # Get the payload that was sent
+        call_args = mock_client_instance.post.call_args
+        payload = call_args[1]['json']
+        
+        # Verify phone was normalized to E.164
+        assert payload['customer']['number'] == "+919876543210", \
+            "Phone should be normalized to E.164 format"
+        
+        # Verify no top-level systemPrompt
+        assert 'systemPrompt' not in payload['assistant'], \
+            "assistant.systemPrompt should not exist"
+        
+        # Verify system prompt is in model.messages
+        assert 'messages' in payload['assistant']['model']
+        system_msgs = [m for m in payload['assistant']['model']['messages'] if m['role'] == 'system']
+        assert len(system_msgs) == 1
+

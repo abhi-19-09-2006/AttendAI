@@ -3,6 +3,7 @@ Vapi.ai voice provider implementation.
 """
 from typing import Dict, Any, Optional
 import httpx
+import re
 from datetime import datetime
 
 from app.core.config import settings
@@ -15,6 +16,49 @@ from app.services.voice_provider import (
 )
 
 logger = get_logger("vapi_provider")
+
+
+def normalize_phone_to_e164(phone: str, default_country_code: str = "+91") -> str:
+    """
+    Normalize phone number to E.164 format for Vapi API.
+    
+    Vapi requires customer.number in E.164 format: +<country_code><number>
+    
+    Args:
+        phone: Phone number in various formats
+        default_country_code: Country code to prepend if not present (default: +91 for India)
+    
+    Returns:
+        E.164 formatted phone number
+        
+    Raises:
+        ValueError: If phone number is clearly invalid
+        
+    Examples:
+        >>> normalize_phone_to_e164("9876543210")
+        "+919876543210"
+        >>> normalize_phone_to_e164("+919876543210")
+        "+919876543210"
+        >>> normalize_phone_to_e164("09876543210")
+        "+919876543210"
+    """
+    # Remove all non-digit characters except leading +
+    cleaned = re.sub(r'[^\d+]', '', phone)
+    
+    # Check for clearly invalid numbers
+    if not cleaned or len(cleaned) < 10:
+        raise ValueError(f"Invalid phone number: {phone}")
+    
+    # Already in E.164 format
+    if cleaned.startswith('+'):
+        return cleaned
+    
+    # Remove leading 0 (common in India)
+    if cleaned.startswith('0'):
+        cleaned = cleaned[1:]
+    
+    # Add default country code
+    return f"{default_country_code}{cleaned}"
 
 
 class VapiProvider(VoiceProvider):
@@ -42,10 +86,17 @@ class VapiProvider(VoiceProvider):
         # Build assistant configuration with dynamic student context
         assistant_config = self._build_assistant_config(context)
 
+        # Normalize phone number to E.164 format
+        try:
+            normalized_phone = normalize_phone_to_e164(context.phone_number)
+        except ValueError as e:
+            logger.error(f"Invalid phone number for Vapi call: {e}")
+            raise
+
         payload = {
             "phoneNumberId": self.phone_number_id,
             "customer": {
-                "number": context.phone_number
+                "number": normalized_phone
             },
             "assistant": assistant_config,
             # Store correlation ID in metadata for webhook identification
@@ -189,19 +240,25 @@ class VapiProvider(VoiceProvider):
             }
 
         # Otherwise, create inline assistant configuration
+        # Vapi requires system prompt in model.messages, not as top-level systemPrompt
         return {
             "model": {
                 "provider": "openai",
                 "model": "gpt-4",
                 "temperature": 0.7,
-                "maxTokens": 500
+                "maxTokens": 500,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": self._get_system_prompt(context)
+                    }
+                ]
             },
             "voice": {
                 "provider": "11labs",
                 "voiceId": "rachel"  # Professional female voice
             },
             "firstMessage": self._get_first_message(context),
-            "systemPrompt": self._get_system_prompt(context),
             "endCallFunctionEnabled": True,
             "recordingEnabled": True,
             "maxDurationSeconds": settings.MAX_CALL_DURATION_SECONDS,
