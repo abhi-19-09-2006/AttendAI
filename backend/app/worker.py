@@ -10,7 +10,7 @@ import sys
 import signal
 import logging
 from rq import Worker
-from app.core.rq_config import get_redis_connection
+from app.core.rq_config import get_rq_redis_connection
 from app.core.logging import get_logger, setup_logging
 
 # Setup application logging
@@ -42,7 +42,7 @@ def main():
     logger.info(f"Starting RQ worker with queues: {queues}")
 
     try:
-        redis_conn = get_redis_connection()
+        redis_conn = get_rq_redis_connection()
 
         # Create worker
         worker = Worker(

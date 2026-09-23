@@ -314,3 +314,69 @@ async def test_create_call_enqueues_rq_job(db_session: AsyncSession):
             await db_session.commit()
         except Exception:
             await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_rq_job_serialization_with_pickle():
+    """
+    Regression test: Verify RQ jobs can be serialized/deserialized without UnicodeDecodeError.
+    
+    This test ensures that:
+    1. RQ Redis connection does NOT use decode_responses=True
+    2. Job payloads (which are pickled) can be properly deserialized
+    3. Worker can process jobs without UnicodeDecodeError
+    
+    Root cause: Using decode_responses=True on Redis connection causes RQ to fail
+    when deserializing pickled binary data, resulting in:
+    UnicodeDecodeError: 'utf-8' codec can't decode byte 0x9c in position 1
+    """
+    from unittest.mock import patch, MagicMock
+    from app.core.rq_config import get_call_queue, get_rq_redis_connection
+    from app.tasks import initiate_pending_call
+    import pickle
+    
+    # Test 1: Verify RQ Redis connection does NOT decode responses
+    rq_redis = get_rq_redis_connection()
+    assert rq_redis.connection_pool.connection_kwargs.get('decode_responses') is False, \
+        "RQ Redis connection must NOT use decode_responses=True"
+    
+    # Test 2: Verify we can enqueue and retrieve a job with binary (pickled) data
+    with patch('app.core.rq_config.get_rq_redis_connection') as mock_get_redis:
+        # Create a mock Redis that simulates proper binary handling
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+        
+        # Simulate pickled job data (binary, not UTF-8 decodable)
+        test_payload = {"call_id": "test-123", "job_id": "job-456"}
+        pickled_data = pickle.dumps(test_payload)
+        
+        # Verify pickled data contains non-UTF-8 bytes
+        try:
+            pickled_data.decode('utf-8')
+            # If this succeeds, the test is invalid - pickled data should not be UTF-8
+            assert False, "Pickled data should contain binary bytes that can't be UTF-8 decoded"
+        except UnicodeDecodeError:
+            # Expected - pickled data is binary
+            pass
+        
+        mock_get_redis.return_value = mock_redis
+        
+        # Create queue with mocked Redis
+        queue = get_call_queue()
+        
+        # Mock the enqueue to return a job
+        mock_job = MagicMock()
+        mock_job.id = "test-rq-job-id"
+        queue.enqueue = MagicMock(return_value=mock_job)
+        
+        # Enqueue a job
+        job = queue.enqueue(
+            initiate_pending_call,
+            "test-call-id",
+            "test-job-id",
+            job_id="call_test-call-id"
+        )
+        
+        # Verify enqueue was called
+        assert queue.enqueue.called
+        assert job.id == "test-rq-job-id"

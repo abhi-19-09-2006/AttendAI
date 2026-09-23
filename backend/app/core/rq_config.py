@@ -13,7 +13,7 @@ logger = get_logger("rq_config")
 
 
 def get_redis_connection() -> Redis:
-    """Get or create Redis connection."""
+    """Get or create Redis connection for general use (with string decoding)."""
     try:
         redis_conn = redis.from_url(
             settings.REDIS_URL,
@@ -32,9 +32,32 @@ def get_redis_connection() -> Redis:
         raise
 
 
+def get_rq_redis_connection() -> Redis:
+    """
+    Get Redis connection for RQ workers (without string decoding).
+    
+    RQ uses pickle serialization which produces binary data.
+    decode_responses=True causes UnicodeDecodeError when deserializing jobs.
+    """
+    try:
+        redis_conn = redis.from_url(
+            settings.REDIS_URL,
+            socket_connect_timeout=5,
+            socket_keepalive=True,
+            health_check_interval=30
+        )
+        # Test connection
+        redis_conn.ping()
+        logger.info("Connected to Redis for RQ")
+        return redis_conn
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis for RQ: {str(e)}")
+        raise
+
+
 def get_queue(name: str = "default") -> Queue:
     """Get a named queue for job processing."""
-    redis_conn = get_redis_connection()
+    redis_conn = get_rq_redis_connection()
     return Queue(name, connection=redis_conn, default_timeout=3600)
 
 
