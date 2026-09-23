@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     VAPI_ASSISTANT_ID: str = ""  # Optional: Pre-created assistant ID
     VAPI_BASE_URL: str = "https://api.vapi.ai"
 
+    # VoiceLink SIP Trunk Configuration (for Indian telephony)
+    # These are used when configuring Vapi with VoiceLink SIP trunk via API
+    VOICELINK_SIP_GATEWAY_IP: str = ""  # VoiceLink SIP gateway IP or hostname
+    VOICELINK_SIP_PORT: int = 5060  # SIP port (typically 5060)
+    VOICELINK_SIP_USERNAME: str = ""  # SIP authentication username
+    VOICELINK_SIP_PASSWORD: str = ""  # SIP authentication password
+    VOICELINK_PHONE_NUMBER: str = ""  # Indian phone number in E.164 format (e.g., +919876543210)
+    VOICELINK_SIP_TRUNK_NAME: str = "VoiceLink India Trunk"  # Display name for the trunk
+
     # LLM Provider
     LLM_PROVIDER: str = "openai"  # openai or anthropic
     OPENAI_API_KEY: str = ""

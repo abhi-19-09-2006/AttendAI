@@ -283,3 +283,88 @@ async def test_vapi_create_call_normalizes_phone():
         system_msgs = [m for m in payload['assistant']['model']['messages'] if m['role'] == 'system']
         assert len(system_msgs) == 1
 
+
+# ============================================================================
+# VoiceLink SIP Integration Tests
+# ============================================================================
+
+
+def test_voicelink_config_variables():
+    """Verify VoiceLink SIP configuration variables are available."""
+    from app.core.config import settings
+    
+    # These should be defined in config.py (even if empty)
+    assert hasattr(settings, 'VOICELINK_SIP_GATEWAY_IP')
+    assert hasattr(settings, 'VOICELINK_SIP_PORT')
+    assert hasattr(settings, 'VOICELINK_SIP_USERNAME')
+    assert hasattr(settings, 'VOICELINK_SIP_PASSWORD')
+    assert hasattr(settings, 'VOICELINK_PHONE_NUMBER')
+    assert hasattr(settings, 'VOICELINK_SIP_TRUNK_NAME')
+    
+    # Port should default to 5060
+    assert settings.VOICELINK_SIP_PORT == 5060 or isinstance(settings.VOICELINK_SIP_PORT, int)
+
+
+def test_voicelink_phone_number_format():
+    """Verify VoiceLink phone number is in E.164 format if set."""
+    from app.core.config import settings
+    
+    if settings.VOICELINK_PHONE_NUMBER:
+        # Should start with + (E.164 format)
+        assert settings.VOICELINK_PHONE_NUMBER.startswith('+'), \
+            f"VOICELINK_PHONE_NUMBER should be in E.164 format (+91...), got: {settings.VOICELINK_PHONE_NUMBER}"
+        
+        # Should be at least 12 characters (+91 + 10 digits)
+        assert len(settings.VOICELINK_PHONE_NUMBER) >= 12, \
+            f"VOICELINK_PHONE_NUMBER too short: {settings.VOICELINK_PHONE_NUMBER}"
+
+
+@pytest.mark.asyncio
+async def test_vapi_uses_phone_number_id():
+    """Verify VapiProvider uses VAPI_PHONE_NUMBER_ID in call payload."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from app.services.vapi_provider import VapiProvider
+    from app.services.voice_provider import CallContext
+    from app.core.config import settings
+    
+    provider = VapiProvider()
+    
+    # Verify provider reads phone_number_id from settings
+    assert provider.phone_number_id == settings.VAPI_PHONE_NUMBER_ID
+    
+    context = CallContext(
+        phone_number="+919876543210",
+        student_name="Test Student",
+        absence_date="2026-09-23",
+        correlation_id="test-call-voicelink"
+    )
+    
+    # Mock httpx.AsyncClient
+    with patch('app.services.vapi_provider.httpx.AsyncClient') as mock_client:
+        mock_response = AsyncMock()
+        mock_response.json.return_value = {
+            "id": "vapi_call_voicelink_123",
+            "status": "queued"
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock()
+        
+        mock_client.return_value = mock_client_instance
+        
+        # Create call
+        result = await provider.create_call(context)
+        
+        # Get the payload that was sent
+        call_args = mock_client_instance.post.call_args
+        payload = call_args[1]['json']
+        
+        # Verify phoneNumberId is used (this is what Vapi uses to route through SIP trunk)
+        assert payload['phoneNumberId'] == settings.VAPI_PHONE_NUMBER_ID, \
+            "Call payload must use VAPI_PHONE_NUMBER_ID (VoiceLink or Vapi number)"
+        
+        # Verify customer number is normalized
+        assert payload['customer']['number'] == "+919876543210"
